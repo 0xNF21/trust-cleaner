@@ -1,14 +1,14 @@
 import type { ReactNode } from 'react';
 
 import { Header } from '@/components/layout/Header';
-import { Sidebar } from '@/components/layout/Sidebar';
 
 export function AppShell({ children }: { children: ReactNode }) {
   return (
-    <div className="grid min-h-screen grid-rows-[3.5rem_1fr] md:grid-cols-[240px_1fr]">
+    <div className="trust-cleaner-shell min-h-screen">
       <Header />
-      <Sidebar />
-      <main className="overflow-auto p-6">{children}</main>
+      <main className="mx-auto w-full max-w-7xl px-4 py-5 sm:px-6 lg:px-8">
+        {children}
+      </main>
     </div>
   );
 }
