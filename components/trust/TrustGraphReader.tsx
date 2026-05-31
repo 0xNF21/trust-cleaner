@@ -2948,15 +2948,22 @@ function PreparedPlan({
     dryRun.transactions.every((tx) =>
       confirmedRows.some((row) => row.member.address === tx.targetAddress),
     );
+  const hasSignedTransactions =
+    signatureState.status === "success" && dryRun.status === "ready";
+  const showDryRunSnapshot =
+    dryRun.status === "ready" && (dryRunMatchesPlan || hasSignedTransactions);
   const canSignUntrusts =
     wallet.isMiniappHost &&
     Boolean(wallet.address) &&
     dryRun.status === "ready" &&
     dryRunMatchesPlan &&
-    signatureState.status !== "sending";
+    signatureState.status !== "sending" &&
+    signatureState.status !== "success";
   const signButtonLabel =
     signatureState.status === "sending"
       ? "Signature en cours"
+      : signatureState.status === "success"
+        ? "Signature envoyee"
       : !wallet.isMiniappHost || !wallet.address
       ? "Ouvrir dans Circles host"
       : dryRun.status !== "ready" || !dryRunMatchesPlan
@@ -3100,7 +3107,10 @@ function PreparedPlan({
   }
 
   async function verifySignedUntrusts() {
-    if (dryRun.status !== "ready" || !dryRunMatchesPlan) {
+    if (
+      dryRun.status !== "ready" ||
+      (!dryRunMatchesPlan && signatureState.status !== "success")
+    ) {
       setVerificationState({
         error: "Dry-run a jour requis avant la relecture.",
         status: "error",
@@ -3135,7 +3145,9 @@ function PreparedPlan({
           <div>
             <h3 className="text-sm font-semibold text-ink">Plan d&apos;untrust</h3>
             <p className="max-w-2xl text-xs leading-relaxed text-ink/60">
-              {selectedRows.length > 0
+              {signatureState.status === "success"
+                ? "Signature envoyee. La verification ci-dessous confirme le resultat on-chain apres relecture."
+                : selectedRows.length > 0
                 ? "Aucune signature n'a ete envoyee. Le plan range seulement les profils selectionnes avant validation manuelle."
                 : "Selectionne un profil Untrust dans le carousel: il apparaitra ici avant toute signature."}
             </p>
@@ -3143,12 +3155,14 @@ function PreparedPlan({
         </div>
         <Button
           type="button"
-          disabled={planSummary.confirm === 0}
+          disabled={planSummary.confirm === 0 || signatureState.status === "success"}
           onClick={() => void prepareDryRun()}
           variant="outline"
         >
           <ClipboardCheck className="size-4" />
-          {planSummary.confirm > 0
+          {signatureState.status === "success"
+            ? "Action signee"
+            : planSummary.confirm > 0
             ? `Dry-run ${planSummary.confirm} untrust`
             : "Dry-run indisponible"}
         </Button>
@@ -3325,14 +3339,16 @@ function PreparedPlan({
           </div>
         ) : null}
 
-        {dryRun.status === "ready" && !dryRunMatchesPlan ? (
+        {dryRun.status === "ready" &&
+        !dryRunMatchesPlan &&
+        signatureState.status !== "success" ? (
           <div className="mt-3 rounded-md border border-amber/20 bg-amber/10 px-3 py-2 text-xs font-medium text-amber">
             Le plan a change depuis le dernier dry-run. Regenere le brouillon
             avant de signer.
           </div>
         ) : null}
 
-        {dryRun.status === "ready" && dryRunMatchesPlan ? (
+        {showDryRunSnapshot ? (
           <div className="mt-3 space-y-2">
             <div className="rounded-md bg-sand/60 px-3 py-2 text-xs text-ink/60">
               Genere a {new Date(dryRun.generatedAt).toLocaleTimeString()}.
@@ -3386,9 +3402,8 @@ function PreparedPlan({
             <div>
               <h4 className="text-sm font-semibold text-ink">Signature wallet</h4>
               <p className="max-w-2xl text-xs leading-relaxed text-ink/60">
-                Active seulement dans l&apos;app Circles connectee. Une
-                confirmation navigateur est demandee juste avant l&apos;envoi au
-                host.
+                Active seulement dans l&apos;app Circles connectee. Un ecran de
+                verification liste les profils juste avant l&apos;envoi au host.
               </p>
             </div>
             <Button
@@ -3474,6 +3489,12 @@ function PreparedPlan({
 
             {verificationResults.length > 0 ? (
               <div className="mt-3 grid gap-2">
+                {verificationResults.every((result) => result.status === "removed") ? (
+                  <div className="rounded-md border border-sage/20 bg-sage/10 px-3 py-2 text-xs font-medium text-sage">
+                    Verification reussie: tous les profils signes sont retires
+                    du trust sortant charge.
+                  </div>
+                ) : null}
                 {verificationResults.map((result) => (
                   <div
                     key={result.targetAddress}
