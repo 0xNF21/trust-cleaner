@@ -4804,7 +4804,29 @@ function TrustCircleManager({
         trustSignals={trustSignals}
       />
 
-      {circleLooksClean ? (
+      {!hasLoadedCircle ? (
+        <div className="mt-4 rounded-lg border border-marine/15 bg-marine/5 p-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="flex items-start gap-3">
+              <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-md bg-marine/10 text-marine">
+                <RefreshCw className="size-5" />
+              </span>
+              <div>
+                <h3 className="text-sm font-semibold text-ink">
+                  Waiting for graph
+                </h3>
+                <p className="mt-1 max-w-2xl text-sm leading-relaxed text-ink/65">
+                  Load a Circles profile to review outgoing-only trusts and
+                  mutual relations with weak signals.
+                </p>
+              </div>
+            </div>
+            <Badge className="border-marine/20 bg-white/65 text-marine" variant="outline">
+              No circle loaded
+            </Badge>
+          </div>
+        </div>
+      ) : circleLooksClean ? (
         <div className="mt-4 rounded-lg border border-sage/20 bg-sage/10 p-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div className="flex items-start gap-3">
