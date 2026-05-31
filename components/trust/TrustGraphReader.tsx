@@ -210,7 +210,6 @@ type CircleMember = RelationRow & {
 };
 
 const ADDRESS_RE = /^0x[a-fA-F0-9]{40}$/;
-const DEFAULT_LAUNCH_ADDRESS = "0x158a0EC28264d37b6471736f29e8F68F0C927ed5";
 const PATHFINDER_TARGET_FLOW = "1000000000000000000";
 const PATHFINDER_MAX_TRANSFERS = 64;
 const PATHFINDER_PATH_MODE = "max";
@@ -5058,11 +5057,7 @@ function TrustCircleManager({
   const normalizedSourceAddress = sourceAddress?.toLowerCase() ?? "";
   const sourceProfileName =
     normalizedSourceAddress ? profiles[normalizedSourceAddress]?.name?.trim() : "";
-  const sourceLabel =
-    sourceProfileName ||
-    (normalizedSourceAddress === DEFAULT_LAUNCH_ADDRESS.toLowerCase()
-      ? "@cryptosnf"
-      : "loaded address");
+  const sourceLabel = sourceProfileName || "loaded address";
   const [sourceToMemberPathfinder, setSourceToMemberPathfinder] = useState<PathfinderState>({
     status: "idle",
   });
@@ -5818,7 +5813,7 @@ function JsonPanel({
 export function TrustGraphReader() {
   const { address, isConnected, isMiniappHost } = useWallet();
   const auth = useAuthSession();
-  const [targetAddress, setTargetAddress] = useState(DEFAULT_LAUNCH_ADDRESS);
+  const [targetAddress, setTargetAddress] = useState("");
   const [profileSearchResults, setProfileSearchResults] = useState<ProfileSearchResult[]>([]);
   const [profileSearchLoading, setProfileSearchLoading] = useState(false);
   const [profileSearchOpen, setProfileSearchOpen] = useState(false);
@@ -5897,12 +5892,13 @@ export function TrustGraphReader() {
     const params = new URLSearchParams(window.location.search);
     const param = params.get("address");
     const normalizedParam = param ? normalizeAddress(param) : null;
-    const launchAddress = normalizedParam ?? DEFAULT_LAUNCH_ADDRESS;
+    if (!param) return;
     queueMicrotask(() => {
-      setTargetAddress(param && normalizedParam ? param : DEFAULT_LAUNCH_ADDRESS);
-      void readGraph(launchAddress);
+      setTargetAddress(param);
+      if (normalizedParam) void readGraph(normalizedParam);
+      else setError("Enter a valid Circles wallet address.");
     });
-    // This hydrates standalone links such as /?address=0x..., otherwise the launch default.
+    // This hydrates standalone links such as /?address=0x... without loading a default profile.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
