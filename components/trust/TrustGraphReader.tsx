@@ -2130,7 +2130,7 @@ function FlowRouteGraph({
                 strokeWidth={edge.width}
               >
                 <title>
-                  {graphNodeLabel(edge.from, profiles)} vers{" "}
+                  {graphNodeLabel(edge.from, profiles)} to{" "}
                   {graphNodeLabel(edge.to, profiles)} - {edge.label} -{" "}
                   {edge.count} fragment{edge.count > 1 ? "s" : ""}
                 </title>
@@ -5299,7 +5299,7 @@ export function TrustGraphReader() {
 
       <details className="trust-panel-soft rounded-lg p-4">
         <summary className="cursor-pointer text-sm font-semibold text-ink">
-          Donnees avancees / raw SDK
+          Advanced data / raw SDK
         </summary>
         <div className="mt-4 grid gap-4 xl:grid-cols-3">
           <JsonPanel
