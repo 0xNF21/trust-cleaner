@@ -5576,6 +5576,7 @@ export function TrustGraphReader() {
   const [loading, setLoading] = useState(false);
   const [activeView, setActiveView] = useState<TrustCleanerView>("cleaner");
   const [activityEvents, setActivityEvents] = useState<ActivityEvent[]>([]);
+  const [debugMode, setDebugMode] = useState(false);
   const activityHistoryLoadedRef = useRef(false);
 
   useEffect(() => {
@@ -5617,6 +5618,15 @@ export function TrustGraphReader() {
   }
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    queueMicrotask(() => {
+      setDebugMode(
+        params.get("debug") === "1" || params.get("debug") === "true",
+      );
+    });
+  }, []);
+
+  useEffect(() => {
     if (auth.address) {
       queueMicrotask(() => setTargetAddress(auth.address ?? ""));
       return;
@@ -5626,7 +5636,8 @@ export function TrustGraphReader() {
 
   useEffect(() => {
     if (address) return;
-    const param = new URLSearchParams(window.location.search).get("address");
+    const params = new URLSearchParams(window.location.search);
+    const param = params.get("address");
     const normalizedParam = param ? normalizeAddress(param) : null;
     const launchAddress = normalizedParam ?? DEFAULT_LAUNCH_ADDRESS;
     queueMicrotask(() => {
@@ -6275,35 +6286,37 @@ export function TrustGraphReader() {
         </>
       ) : null}
 
-      <details className="trust-panel-soft rounded-lg p-4">
-        <summary className="cursor-pointer text-sm font-semibold text-ink">
-          Advanced diagnostics
-        </summary>
-        <div className="mt-4 grid gap-4 xl:grid-cols-3">
-          <JsonPanel
-            title="outgoing trusts"
-            count={result?.trusts.length}
-            value={result?.trusts ?? []}
-          />
-          <JsonPanel
-            title="incoming trusts"
-            count={result?.trustedBy.length}
-            value={result?.trustedBy ?? []}
-          />
-          <JsonPanel
-            title="mutual trusts"
-            count={result?.mutualTrusts.length}
-            value={result?.mutualTrusts ?? []}
-          />
-        </div>
-        <div className="mt-4">
-          <JsonPanel
-            title="relation diagnostic page"
-            count={result?.rawRelationsPage.results.length}
-            value={result?.rawRelationsPage ?? null}
-          />
-        </div>
-      </details>
+      {debugMode ? (
+        <details className="trust-panel-soft rounded-lg p-4">
+          <summary className="cursor-pointer text-sm font-semibold text-ink">
+            Advanced diagnostics
+          </summary>
+          <div className="mt-4 grid gap-4 xl:grid-cols-3">
+            <JsonPanel
+              title="outgoing trusts"
+              count={result?.trusts.length}
+              value={result?.trusts ?? []}
+            />
+            <JsonPanel
+              title="incoming trusts"
+              count={result?.trustedBy.length}
+              value={result?.trustedBy ?? []}
+            />
+            <JsonPanel
+              title="mutual trusts"
+              count={result?.mutualTrusts.length}
+              value={result?.mutualTrusts ?? []}
+            />
+          </div>
+          <div className="mt-4">
+            <JsonPanel
+              title="relation diagnostic page"
+              count={result?.rawRelationsPage.results.length}
+              value={result?.rawRelationsPage ?? null}
+            />
+          </div>
+        </details>
+      ) : null}
         </>
       ) : (
         <ActivityHistoryPanel
