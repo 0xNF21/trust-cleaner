@@ -395,7 +395,7 @@ function buildCleanerAnalysis(result: TrustGraphResult | null): CleanerAnalysis 
   );
   const rawSample = relationRows(
     "rawRelations",
-    "Raw relation",
+    "Diagnostic relation",
     result.rawRelationsPage.results,
     owner,
   ).slice(0, 6);
@@ -405,8 +405,8 @@ function buildCleanerAnalysis(result: TrustGraphResult | null): CleanerAnalysis 
 
   const recommendation =
     outgoingOnly.length > 0
-      ? "Review outgoing-only trusts first. This dry run does not send transactions."
-      : "No outgoing-only trust detected in the SDK lists. Keep monitoring raw relations.";
+      ? "Review outgoing-only trusts first. Nothing is sent before wallet approval."
+      : "No outgoing-only trust detected in the loaded lists. Keep monitoring the circle.";
 
   return { outgoingOnly, incomingOnly, mutual, rawSample, recommendation };
 }
@@ -1061,7 +1061,7 @@ function RelationList({
       ))}
       {rows.length > 5 ? (
         <div className="text-xs font-medium text-ink/50">
-          +{rows.length - 5} more in raw data
+          +{rows.length - 5} more in diagnostics
         </div>
       ) : null}
     </div>
@@ -1199,9 +1199,9 @@ function CleanerAnalysisPanel({
       <div className="mt-3 rounded-lg border border-ink/10 bg-white/35 p-3">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <h3 className="text-sm font-semibold text-ink">Raw relation sample</h3>
+            <h3 className="text-sm font-semibold text-ink">Relation sample</h3>
             <p className="mt-1 text-xs text-ink/60">
-              First normalized counterparts from the latest raw page.
+              First normalized counterparts from the latest diagnostic read.
             </p>
           </div>
           <Badge className="border-amber/20 bg-amber/10 text-amber" variant="outline">
@@ -5133,9 +5133,6 @@ export function TrustGraphReader() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [address, auth.address]);
 
-  const lastFetch = result
-    ? `${new Date(result.fetchedAt).toLocaleTimeString()} (${result.elapsedMs} ms)`
-    : "Not loaded";
   const cleanerAnalysis = useMemo(() => buildCleanerAnalysis(result), [result]);
   const cleanupCandidates = useMemo(
     () =>
@@ -5514,7 +5511,7 @@ export function TrustGraphReader() {
 
       {activeView === "cleaner" ? (
         <>
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+      <section className="grid gap-3 sm:grid-cols-3">
         <CountTile
           icon={<ArrowUpRight className="size-4" />}
           label="Trusts"
@@ -5532,20 +5529,6 @@ export function TrustGraphReader() {
           label="Mutual"
           tone="sage"
           value={result?.counts.mutualTrusts ?? "-"}
-        />
-        <CountTile
-          icon={<RefreshCw className="size-4" />}
-          info="Raw relations returned by the Circles SDK on the first diagnostic page. This mainly verifies the read, not the cleaning decision on its own."
-          label="Raw relations"
-          tone="amber"
-          value={result?.counts.rawRelations ?? "-"}
-        />
-        <CountTile
-          icon={<ShieldCheck className="size-4" />}
-          info="Time of the latest data fetch from Circles for the displayed address."
-          label="Last fetch"
-          tone="ink"
-          value={lastFetch}
         />
       </section>
 
@@ -5600,28 +5583,28 @@ export function TrustGraphReader() {
 
       <details className="trust-panel-soft rounded-lg p-4">
         <summary className="cursor-pointer text-sm font-semibold text-ink">
-          Advanced data / raw SDK
+          Advanced diagnostics
         </summary>
         <div className="mt-4 grid gap-4 xl:grid-cols-3">
           <JsonPanel
-            title="trusts"
+            title="outgoing trusts"
             count={result?.trusts.length}
             value={result?.trusts ?? []}
           />
           <JsonPanel
-            title="trustedBy"
+            title="incoming trusts"
             count={result?.trustedBy.length}
             value={result?.trustedBy ?? []}
           />
           <JsonPanel
-            title="mutualTrusts"
+            title="mutual trusts"
             count={result?.mutualTrusts.length}
             value={result?.mutualTrusts ?? []}
           />
         </div>
         <div className="mt-4">
           <JsonPanel
-            title="getTrustRelations first page"
+            title="relation diagnostic page"
             count={result?.rawRelationsPage.results.length}
             value={result?.rawRelationsPage ?? null}
           />
