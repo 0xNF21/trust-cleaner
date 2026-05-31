@@ -196,6 +196,14 @@ type TrustCleanerView = "cleaner" | "history";
 
 type CircleBucket = "keep" | "review" | "incoming";
 type RelationExplorerTab = "review" | "mutual" | "incoming";
+type CleanerWorkflowStepId =
+  | "analyze"
+  | "review"
+  | "confirm"
+  | "prepare"
+  | "sign"
+  | "verify";
+type CleanerWorkflowStepState = "active" | "done" | "pending" | "disabled";
 
 type CircleMember = RelationRow & {
   bucket: CircleBucket;
@@ -3349,6 +3357,7 @@ function PreparedPlan({
   currentMembers,
   onActivity,
   onRefreshGraph,
+  onWorkflowStepChange,
   profiles,
   readVersion,
   selectedRows,
@@ -3358,6 +3367,7 @@ function PreparedPlan({
   currentMembers: CircleMember[];
   onActivity: (event: ActivityDraft) => void;
   onRefreshGraph: () => Promise<boolean>;
+  onWorkflowStepChange: (step: CleanerWorkflowStepId) => void;
   profiles: Record<string, CirclesProfile>;
   readVersion: string | null;
   selectedRows: CircleMember[];
@@ -3495,8 +3505,22 @@ function PreparedPlan({
               : "Absent from loaded circle",
             status: stillOutgoing ? ("still-present" as const) : ("removed" as const),
           };
-        })
+      })
       : [];
+  const workflowStep: CleanerWorkflowStepId =
+    signatureState.status === "success"
+      ? "verify"
+      : dryRun.status === "ready" && dryRunMatchesPlan
+        ? "sign"
+        : needsTransactionDraft
+          ? "prepare"
+          : selectedRows.length > 0
+            ? "confirm"
+            : "review";
+
+  useEffect(() => {
+    onWorkflowStepChange(workflowStep);
+  }, [onWorkflowStepChange, workflowStep]);
 
   async function buildUntrustTransactions() {
     if (confirmedRows.length === 0) {
@@ -4686,6 +4710,188 @@ function CleanerDiagnosis({
   );
 }
 
+const CLEANER_WORKFLOW_STEPS: {
+  description: string;
+  icon: ReactNode;
+  id: CleanerWorkflowStepId;
+  label: string;
+}[] = [
+  {
+    description: "Load a Circles profile.",
+    icon: <Search className="size-4" />,
+    id: "analyze",
+    label: "Analyze circle",
+  },
+  {
+    description: "Read risk signals.",
+    icon: <Eye className="size-4" />,
+    id: "review",
+    label: "Review profiles",
+  },
+  {
+    description: "Keep only real untrusts.",
+    icon: <ListChecks className="size-4" />,
+    id: "confirm",
+    label: "Confirm untrusts",
+  },
+  {
+    description: "Build the wallet preview.",
+    icon: <ClipboardCheck className="size-4" />,
+    id: "prepare",
+    label: "Prepare wallet review",
+  },
+  {
+    description: "Approve in Circles.",
+    icon: <ShieldCheck className="size-4" />,
+    id: "sign",
+    label: "Sign in wallet",
+  },
+  {
+    description: "Reread the circle.",
+    icon: <RefreshCw className="size-4" />,
+    id: "verify",
+    label: "Verify cleanup",
+  },
+];
+
+function cleanerWorkflowStepClass(state: CleanerWorkflowStepState) {
+  if (state === "done") {
+    return "border-sage/20 bg-white/75 text-ink";
+  }
+  if (state === "active") {
+    return "border-citrus/35 bg-citrus/10 text-ink shadow-sm ring-2 ring-citrus/10";
+  }
+  if (state === "disabled") {
+    return "border-ink/10 bg-white/30 text-ink/35";
+  }
+  return "border-ink/10 bg-white/55 text-ink/55";
+}
+
+function cleanerWorkflowIconClass(state: CleanerWorkflowStepState) {
+  if (state === "done") return "bg-sage/12 text-sage";
+  if (state === "active") return "bg-citrus/12 text-citrus";
+  if (state === "disabled") return "bg-white/50 text-ink/25";
+  return "bg-sand/70 text-ink/40";
+}
+
+function cleanerWorkflowStepStatus({
+  activeStep,
+  hasActionableCandidates,
+  hasLoadedCircle,
+  step,
+}: {
+  activeStep: CleanerWorkflowStepId;
+  hasActionableCandidates: boolean;
+  hasLoadedCircle: boolean;
+  step: CleanerWorkflowStepId;
+}): CleanerWorkflowStepState {
+  if (!hasLoadedCircle) return step === "analyze" ? "active" : "pending";
+  if (!hasActionableCandidates && step !== "analyze" && step !== "review") {
+    return "disabled";
+  }
+
+  const activeIndex = CLEANER_WORKFLOW_STEPS.findIndex(
+    (workflowStep) => workflowStep.id === activeStep,
+  );
+  const stepIndex = CLEANER_WORKFLOW_STEPS.findIndex(
+    (workflowStep) => workflowStep.id === step,
+  );
+
+  if (stepIndex < activeIndex) return "done";
+  if (stepIndex === activeIndex) return "active";
+  return "pending";
+}
+
+function GuidedCleanerSteps({
+  activeStep,
+  hasActionableCandidates,
+  hasLoadedCircle,
+  incomingCount,
+  mutualWatchCount,
+  reviewCount,
+  selectedCount,
+}: {
+  activeStep: CleanerWorkflowStepId;
+  hasActionableCandidates: boolean;
+  hasLoadedCircle: boolean;
+  incomingCount: number;
+  mutualWatchCount: number;
+  reviewCount: number;
+  selectedCount: number;
+}) {
+  const activeWorkflowStep =
+    CLEANER_WORKFLOW_STEPS.find((step) => step.id === activeStep) ??
+    CLEANER_WORKFLOW_STEPS[0];
+  const nextAction = !hasLoadedCircle
+    ? "Analyze a Circles profile"
+    : !hasActionableCandidates
+      ? mutualWatchCount > 0
+        ? "Review mutual watchlist"
+        : "No wallet action needed"
+      : selectedCount === 0
+        ? "Choose profiles to untrust"
+        : activeWorkflowStep.label;
+
+  return (
+    <section className="mt-4 rounded-lg border border-ink/10 bg-white/45 p-3">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge className="border-marine/20 bg-marine/10 text-marine" variant="outline">
+              Current step
+            </Badge>
+            <h3 className="text-sm font-semibold text-ink">{nextAction}</h3>
+          </div>
+          <p className="mt-1 text-xs leading-relaxed text-ink/60">
+            {reviewCount} untrust candidate{reviewCount > 1 ? "s" : ""},{" "}
+            {mutualWatchCount} mutual watch, {incomingCount} incoming-only.
+          </p>
+        </div>
+        <Badge className="border-citrus/25 bg-citrus/10 text-citrus" variant="outline">
+          {selectedCount} selected
+        </Badge>
+      </div>
+
+      <div className="mt-3 grid gap-2 md:grid-cols-3 xl:grid-cols-6">
+        {CLEANER_WORKFLOW_STEPS.map((step, index) => {
+          const state = cleanerWorkflowStepStatus({
+            activeStep,
+            hasActionableCandidates,
+            hasLoadedCircle,
+            step: step.id,
+          });
+
+          return (
+            <div
+              key={step.id}
+              className={`min-w-0 rounded-lg border p-2.5 transition ${cleanerWorkflowStepClass(state)}`}
+            >
+              <div className="flex items-center gap-2">
+                <span
+                  className={`inline-flex size-8 shrink-0 items-center justify-center rounded-md ${cleanerWorkflowIconClass(state)}`}
+                >
+                  {state === "done" ? <CheckCircle2 className="size-4" /> : step.icon}
+                </span>
+                <div className="min-w-0">
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-ink/40">
+                    Step {index + 1}
+                  </div>
+                  <div className="truncate text-xs font-semibold">
+                    {step.label}
+                  </div>
+                </div>
+              </div>
+              <p className="mt-2 line-clamp-2 text-xs leading-relaxed text-ink/55">
+                {state === "disabled" ? "Not needed for this circle." : step.description}
+              </p>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 function TrustCircleManager({
   analysis,
   onActivity,
@@ -4769,6 +4975,8 @@ function TrustCircleManager({
   const selectedRows = reviewMembers.filter((member) =>
     selectedCleanupIds.has(cleanupRowId(member)),
   );
+  const [workflowStep, setWorkflowStep] =
+    useState<CleanerWorkflowStepId>("review");
   const planRef = useRef<HTMLDivElement | null>(null);
   const sortedReviewMembers = useMemo(
     () =>
@@ -4935,6 +5143,15 @@ function TrustCircleManager({
     hasLoadedCircle &&
     reviewMembers.length === 0 &&
     mutualWatchMembers.length === 0;
+  const activeWorkflowStep: CleanerWorkflowStepId = !hasLoadedCircle
+    ? "analyze"
+    : reviewMembers.length === 0
+      ? "review"
+      : selectedRows.length === 0
+        ? "review"
+        : workflowStep === "review"
+          ? "prepare"
+          : workflowStep;
 
   useEffect(() => {
     const term = circleSearchTerm.trim();
@@ -5235,6 +5452,16 @@ function TrustCircleManager({
         </div>
       </div>
 
+      <GuidedCleanerSteps
+        activeStep={activeWorkflowStep}
+        hasActionableCandidates={reviewMembers.length > 0}
+        hasLoadedCircle={hasLoadedCircle}
+        incomingCount={incomingMembers.length}
+        mutualWatchCount={mutualWatchMembers.length}
+        reviewCount={reviewMembers.length}
+        selectedCount={selectedRows.length}
+      />
+
       <CleanerDiagnosis
         hasLoadedCircle={hasLoadedCircle}
         incomingCount={incomingMembers.length}
@@ -5312,6 +5539,7 @@ function TrustCircleManager({
             currentMembers={allMembers}
             onActivity={onActivity}
             onRefreshGraph={onRefreshGraph}
+            onWorkflowStepChange={setWorkflowStep}
             profiles={profiles}
             readVersion={readVersion}
             selectedRows={selectedRows}
