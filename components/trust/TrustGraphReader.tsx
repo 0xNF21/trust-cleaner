@@ -2888,6 +2888,7 @@ function PreparedPlan({
     hashes: [],
     status: "idle",
   });
+  const [signatureReviewOpen, setSignatureReviewOpen] = useState(false);
   const [verificationState, setVerificationState] = useState<VerificationState>({
     status: "idle",
     targets: [],
@@ -2957,10 +2958,10 @@ function PreparedPlan({
     signatureState.status === "sending"
       ? "Signature en cours"
       : !wallet.isMiniappHost || !wallet.address
-        ? "Ouvrir dans Circles host"
-        : dryRun.status !== "ready" || !dryRunMatchesPlan
-          ? "Dry-run requis avant signature"
-          : `Signer ${dryRun.transactions.length} untrust`;
+      ? "Ouvrir dans Circles host"
+      : dryRun.status !== "ready" || !dryRunMatchesPlan
+        ? "Dry-run requis avant signature"
+          : `Verifier ${dryRun.transactions.length} untrust`;
   const currentMembersByAddress = useMemo(
     () =>
       new Map(
@@ -3032,6 +3033,28 @@ function PreparedPlan({
     }
   }
 
+  function openSignatureReview() {
+    if (!wallet.isMiniappHost || !wallet.address) {
+      setSignatureState({
+        error: "Signature disponible uniquement dans l'app Circles connectee.",
+        hashes: [],
+        status: "error",
+      });
+      return;
+    }
+
+    if (dryRun.status !== "ready" || !dryRunMatchesPlan) {
+      setSignatureState({
+        error: "Lance d'abord un dry-run a jour avant de signer.",
+        hashes: [],
+        status: "error",
+      });
+      return;
+    }
+
+    setSignatureReviewOpen(true);
+  }
+
   async function signConfirmedUntrusts() {
     if (!wallet.isMiniappHost || !wallet.address) {
       setSignatureState({
@@ -3051,12 +3074,8 @@ function PreparedPlan({
       return;
     }
 
-    const ok = window.confirm(
-      `Signer ${dryRun.transactions.length} untrust confirme(s) ?`,
-    );
-    if (!ok) return;
-
     try {
+      setSignatureReviewOpen(false);
       setSignatureState({ hashes: [], status: "sending" });
       const { sendTransactions } = await import("@aboutcircles/miniapp-sdk");
       const hashes = await sendTransactions(
@@ -3324,15 +3343,18 @@ function PreparedPlan({
                 key={`${tx.targetAddress}:${index}`}
                 className="rounded-lg border border-ink/10 bg-white/70 p-3"
               >
-                <summary className="cursor-pointer text-sm font-semibold text-ink">
-                  {index + 1}. {tx.targetName} - untrust
-                </summary>
+              <summary className="cursor-pointer text-sm font-semibold text-ink">
+                {index + 1}. {tx.targetName} - untrust
+              </summary>
                 <div className="mt-2 grid gap-2 text-xs text-ink/60 sm:grid-cols-2">
                   <div className="rounded-md bg-sand/60 px-2 py-1.5">
                     Cible: {shortenAddress(tx.targetAddress)} - {tx.targetType}
                   </div>
                   <div className="rounded-md bg-sand/60 px-2 py-1.5">
-                    Statut: {tx.targetStatus}
+                    Decision: Untrust confirme
+                  </div>
+                  <div className="rounded-md bg-sand/60 px-2 py-1.5">
+                    Analyse cleaner: {tx.targetStatus}
                   </div>
                   <div className="rounded-md bg-sand/60 px-2 py-1.5">
                     Contrat: {shortenAddress(tx.to)}
@@ -3372,7 +3394,7 @@ function PreparedPlan({
             <Button
               type="button"
               disabled={!canSignUntrusts}
-              onClick={() => void signConfirmedUntrusts()}
+              onClick={openSignatureReview}
             >
               {signatureState.status === "sending" ? (
                 <RefreshCw className="size-4 animate-spin" />
@@ -3482,6 +3504,95 @@ function PreparedPlan({
           </div>
         </div>
       </div>
+      {signatureReviewOpen &&
+      dryRun.status === "ready" &&
+      dryRunMatchesPlan
+        ? createPortal(
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/45 p-4 backdrop-blur-sm">
+              <div className="max-h-[min(720px,90vh)] w-full max-w-2xl overflow-hidden rounded-lg border border-ink/10 bg-white shadow-2xl">
+                <div className="border-b border-ink/10 bg-sand/80 px-4 py-3">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <h3 className="text-base font-semibold text-ink">
+                        Derniere verification
+                      </h3>
+                      <p className="mt-1 text-xs leading-relaxed text-ink/60">
+                        Cette etape enverra une vraie demande de signature au
+                        wallet Circles. Chaque ligne met le trust a zero.
+                      </p>
+                    </div>
+                    <Badge className="border-citrus/25 bg-citrus/10 text-citrus" variant="outline">
+                      {dryRun.transactions.length} untrust
+                    </Badge>
+                  </div>
+                </div>
+
+                <div className="max-h-[52vh] overflow-auto p-4">
+                  <div className="rounded-lg border border-citrus/20 bg-citrus/10 p-3 text-xs leading-relaxed text-citrus">
+                    Apres signature, ces profils ne seront plus trustes par ton
+                    wallet. Tu pourras relire le cercle juste apres pour verifier
+                    le resultat.
+                  </div>
+
+                  <div className="mt-3 grid gap-2">
+                    {dryRun.transactions.map((tx, index) => (
+                      <div
+                        key={`${tx.targetAddress}:review:${index}`}
+                        className="rounded-lg border border-ink/10 bg-sand/45 p-3"
+                      >
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                          <div className="min-w-0">
+                            <div className="truncate text-sm font-semibold text-ink">
+                              {index + 1}. {tx.targetName}
+                            </div>
+                            <div className="truncate text-xs text-ink/55">
+                              {shortenAddress(tx.targetAddress)} - {tx.targetType}
+                            </div>
+                          </div>
+                          <Badge className="border-citrus/25 bg-citrus/10 text-citrus" variant="outline">
+                            Untrust confirme
+                          </Badge>
+                        </div>
+                        <div className="mt-2 grid gap-2 text-xs text-ink/60 sm:grid-cols-2">
+                          <div className="rounded-md bg-white/70 px-2 py-1.5">
+                            Methode: {tx.method}
+                          </div>
+                          <div className="rounded-md bg-white/70 px-2 py-1.5">
+                            Expiry: 0
+                          </div>
+                          <div className="rounded-md bg-white/70 px-2 py-1.5">
+                            Analyse cleaner: {tx.targetStatus}
+                          </div>
+                          <div className="rounded-md bg-white/70 px-2 py-1.5">
+                            Valeur: {tx.value}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex flex-col-reverse gap-2 border-t border-ink/10 bg-white px-4 py-3 sm:flex-row sm:justify-end">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setSignatureReviewOpen(false)}
+                  >
+                    Annuler
+                  </Button>
+                  <Button
+                    type="button"
+                    onClick={() => void signConfirmedUntrusts()}
+                  >
+                    <ClipboardCheck className="size-4" />
+                    Signer maintenant
+                  </Button>
+                </div>
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   );
 }
