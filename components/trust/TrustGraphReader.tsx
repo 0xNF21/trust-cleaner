@@ -3438,6 +3438,22 @@ function PreparedPlan({
     signatureState.status === "success" && dryRun.status === "ready";
   const showDryRunSnapshot =
     dryRun.status === "ready" && (dryRunMatchesPlan || hasSignedTransactions);
+  const canPrepareDraft =
+    planSummary.confirm > 0 && signatureState.status !== "success";
+  const transactionDraftStale =
+    dryRun.status === "ready" &&
+    !dryRunMatchesPlan &&
+    signatureState.status !== "success";
+  const needsTransactionDraft =
+    canPrepareDraft && (dryRun.status !== "ready" || transactionDraftStale);
+  const prepareDraftLabel =
+    signatureState.status === "success"
+      ? "Signed action"
+      : transactionDraftStale
+        ? `Update wallet review (${planSummary.confirm})`
+        : planSummary.confirm > 0
+          ? `Prepare wallet review (${planSummary.confirm})`
+          : "Nothing to prepare";
   const canSignUntrusts =
     wallet.isMiniappHost &&
     Boolean(wallet.address) &&
@@ -3453,7 +3469,7 @@ function PreparedPlan({
       : !wallet.isMiniappHost || !wallet.address
       ? "Open in Circles app"
       : dryRun.status !== "ready" || !dryRunMatchesPlan
-        ? "Prepare transaction first"
+        ? "Prepare wallet review first"
           : `Review ${dryRun.transactions.length} untrust`;
   const currentMembersByAddress = useMemo(
     () =>
@@ -3539,7 +3555,7 @@ function PreparedPlan({
 
     if (dryRun.status !== "ready" || !dryRunMatchesPlan) {
       setSignatureState({
-        error: "Prepare an up-to-date transaction before signing.",
+        error: "Prepare an up-to-date wallet review before signing.",
         hashes: [],
         status: "error",
       });
@@ -3561,7 +3577,7 @@ function PreparedPlan({
 
     if (dryRun.status !== "ready" || !dryRunMatchesPlan) {
       setSignatureState({
-        error: "Prepare an up-to-date transaction before signing.",
+        error: "Prepare an up-to-date wallet review before signing.",
         hashes: [],
         status: "error",
       });
@@ -3614,7 +3630,7 @@ function PreparedPlan({
       (!dryRunMatchesPlan && signatureState.status !== "success")
     ) {
       setVerificationState({
-        error: "Prepared transaction required before rechecking.",
+        error: "Prepared wallet review required before rechecking.",
         status: "error",
         targets: [],
       });
@@ -3657,16 +3673,12 @@ function PreparedPlan({
         </div>
         <Button
           type="button"
-          disabled={planSummary.confirm === 0 || signatureState.status === "success"}
+          disabled={!canPrepareDraft}
           onClick={() => void prepareDryRun()}
-          variant="outline"
+          variant={needsTransactionDraft ? "default" : "outline"}
         >
           <ClipboardCheck className="size-4" />
-          {signatureState.status === "success"
-            ? "Signed action"
-            : planSummary.confirm > 0
-            ? `Prepare ${planSummary.confirm} untrust`
-            : "Nothing to prepare"}
+          {prepareDraftLabel}
         </Button>
       </div>
 
@@ -3696,6 +3708,40 @@ function PreparedPlan({
           </div>
         </div>
       </div>
+
+      {needsTransactionDraft ? (
+        <div className="mt-3 rounded-lg border border-citrus/25 bg-citrus/10 p-3">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex items-start gap-3">
+              <span className="inline-flex size-10 shrink-0 items-center justify-center rounded-md bg-citrus/10 text-citrus">
+                <ClipboardCheck className="size-5" />
+              </span>
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge className="border-citrus/25 bg-white/70 text-citrus" variant="outline">
+                    Next step
+                  </Badge>
+                  <h4 className="text-sm font-semibold text-ink">
+                    Prepare the wallet review
+                  </h4>
+                </div>
+                <p className="mt-1 max-w-3xl text-sm leading-relaxed text-ink/68">
+                  Build the transaction preview from the confirmed untrust
+                  decisions. Nothing is signed yet.
+                </p>
+              </div>
+            </div>
+            <Button
+              type="button"
+              className="w-full lg:w-auto"
+              onClick={() => void prepareDryRun()}
+            >
+              <ClipboardCheck className="size-4" />
+              {prepareDraftLabel}
+            </Button>
+          </div>
+        </div>
+      ) : null}
 
       <div className="mt-3 grid gap-3">
         {groupedRows.length > 0 ? groupedRows.map((group) => (
@@ -3822,7 +3868,7 @@ function PreparedPlan({
         <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <h4 className="text-sm font-semibold text-ink">
-              Transaction draft
+              Wallet review draft
             </h4>
             <p className="text-xs leading-relaxed text-ink/60">
               This draft shows exactly what the wallet will receive before you
@@ -3896,7 +3942,7 @@ function PreparedPlan({
           </div>
         ) : (
           <div className="mt-3 rounded-lg border border-dashed border-ink/15 bg-sand/45 p-3 text-xs text-ink/55">
-            Prepare the transaction once the profiles to untrust are confirmed.
+            Use Prepare wallet review once the profiles to untrust are confirmed.
           </div>
         )}
 
