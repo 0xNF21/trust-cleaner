@@ -1656,6 +1656,12 @@ function CirclePersonCard({
           >
             {relationSentence(member, name)}
           </p>
+          {compact ? (
+            <div className="mt-1 truncate rounded-md bg-sand/55 px-2 py-1 text-[11px] text-ink/55">
+              <span className="font-semibold text-ink/60">Shown because:</span>{" "}
+              {status.reasons.slice(0, 2).join(" + ")}
+            </div>
+          ) : null}
           <div className="mt-2 flex flex-wrap gap-1.5">
             <Badge className={circleBucketTone(member.bucket)} variant="outline">
               {circleBucketLabel(member.bucket)}
@@ -4393,6 +4399,146 @@ function MutualWatchlist({
   );
 }
 
+function CleanerDiagnosis({
+  hasLoadedCircle,
+  incomingCount,
+  mutualWatchCount,
+  onSelectTab,
+  reviewMembers,
+  trustSignals,
+}: {
+  hasLoadedCircle: boolean;
+  incomingCount: number;
+  mutualWatchCount: number;
+  onSelectTab: (tab: RelationExplorerTab) => void;
+  reviewMembers: CircleMember[];
+  trustSignals: Record<string, TrustSignal>;
+}) {
+  const reviewSummary = reviewMembers.reduce(
+    (counts, member) => {
+      const status = cleanerStatus(member, trustSignals[member.address]);
+      if (status.label === "Urgent") counts.urgent += 1;
+      else if (status.label === "Likely untrust") counts.likely += 1;
+      else counts.review += 1;
+      return counts;
+    },
+    { likely: 0, review: 0, urgent: 0 },
+  );
+  const hasUntrust = reviewMembers.length > 0;
+  const hasWatch = mutualWatchCount > 0;
+  const headline = !hasLoadedCircle
+    ? "Load a profile to get a cleaner diagnosis"
+    : hasUntrust
+      ? `${reviewMembers.length} untrust candidate${reviewMembers.length > 1 ? "s" : ""} to review`
+      : hasWatch
+        ? "No signature needed, but mutuals deserve review"
+        : "No cleanup action needed";
+  const summary = !hasLoadedCircle
+    ? "Trust Cleaner will separate real untrust candidates from watch-only and no-risk relations."
+    : hasUntrust
+      ? "Only outgoing-only trusts can enter the untrust plan. Review them one by one before preparing a signature."
+      : hasWatch
+        ? "There is no outgoing-only trust to remove. Some mutual relations have weak signals, so keep them in review without preparing a transaction."
+        : "No outgoing-only trust or risky mutual signal was found in this loaded circle.";
+  const toneClass = hasUntrust
+    ? "border-citrus/25 bg-citrus/5"
+    : hasWatch
+      ? "border-amber/25 bg-amber/5"
+      : "border-sage/25 bg-sage/10";
+  const iconClass = hasUntrust
+    ? "bg-citrus/10 text-citrus"
+    : hasWatch
+      ? "bg-amber/10 text-amber"
+      : "bg-sage/15 text-sage";
+  const Icon = hasUntrust ? ShieldAlert : hasWatch ? AlertCircle : ShieldCheck;
+  const actionCards = [
+    {
+      body: hasUntrust
+        ? `${reviewSummary.urgent} urgent, ${reviewSummary.likely} likely, ${reviewSummary.review} manual review.`
+        : "Only profiles you trust without direct return appear here.",
+      count: reviewMembers.length,
+      id: "review" as const,
+      label: "Untrust candidates",
+      tone: "text-citrus",
+    },
+    {
+      body: "Mutual relations with low score, weak identity or weak network signals.",
+      count: mutualWatchCount,
+      id: "mutual" as const,
+      label: "Watch mutuals",
+      tone: "text-amber",
+    },
+    {
+      body: "Profiles that trust you while you do not accept their CRC.",
+      count: incomingCount,
+      id: "incoming" as const,
+      label: "No outgoing risk",
+      tone: "text-marine",
+    },
+  ];
+
+  return (
+    <section className={`mt-4 rounded-lg border p-4 ${toneClass}`}>
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div className="flex min-w-0 items-start gap-3">
+          <span className={`inline-flex size-10 shrink-0 items-center justify-center rounded-md ${iconClass}`}>
+            <Icon className="size-5" />
+          </span>
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="text-sm font-semibold text-ink">
+                Cleaner diagnosis
+              </h3>
+              <Badge className="border-ink/10 bg-white/70 text-ink/60" variant="outline">
+                manual review
+              </Badge>
+            </div>
+            <p className="mt-1 text-lg font-semibold leading-snug text-ink">
+              {headline}
+            </p>
+            <p className="mt-1 max-w-3xl text-sm leading-relaxed text-ink/65">
+              {summary}
+            </p>
+          </div>
+        </div>
+        <Badge
+          className={
+            hasUntrust
+              ? "border-citrus/25 bg-white/70 text-citrus"
+              : "border-sage/25 bg-white/70 text-sage"
+          }
+          variant="outline"
+        >
+          {hasUntrust ? "Signature possible after review" : "No signature needed"}
+        </Badge>
+      </div>
+
+      <div className="mt-4 grid gap-2 lg:grid-cols-3">
+        {actionCards.map((card) => (
+          <button
+            key={card.id}
+            type="button"
+            className="rounded-lg border border-ink/10 bg-white/65 p-3 text-left transition hover:border-marine/25 hover:bg-white"
+            onClick={() => onSelectTab(card.id)}
+          >
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-xs font-semibold uppercase tracking-wide text-ink/45">
+                {card.label}
+              </span>
+              <span className={`text-lg font-semibold tabular-nums ${card.tone}`}>
+                {card.count}
+              </span>
+            </div>
+            <p className="mt-1 text-xs leading-relaxed text-ink/60">
+              {card.body}
+            </p>
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function TrustCircleManager({
   analysis,
   onActivity,
@@ -4530,18 +4676,18 @@ function TrustCircleManager({
       {
         empty: "No outgoing-only trust to review.",
         helper:
-          "Outgoing-only trusts are the only profiles that can enter the untrust plan.",
+          "These are the only profiles that can enter the untrust plan.",
         id: "review" as const,
         members: reviewMembers,
-        title: "Untrust",
+        title: "Untrust candidates",
       },
       {
         empty: "No mutual trust detected.",
         helper:
-          "Mutual relations are kept by default. Profiles marked Watch have weak signals to inspect.",
+          "Mutual relations are kept by default. Profiles marked Watch deserve context review.",
         id: "mutual" as const,
         members: keepMembers,
-        title: "Mutual",
+        title: "Watch mutuals",
       },
       {
         empty: "No incoming trust without return.",
@@ -4549,7 +4695,7 @@ function TrustCircleManager({
           "Incoming-only profiles trust you, but you do not accept their CRC.",
         id: "incoming" as const,
         members: incomingMembers,
-        title: "Incoming",
+        title: "No outgoing risk",
       },
     ],
     [incomingMembers, keepMembers, reviewMembers],
@@ -4957,6 +5103,17 @@ function TrustCircleManager({
           review outgoing-only trusts before any action.
         </div>
       </div>
+
+      <CleanerDiagnosis
+        hasLoadedCircle={hasLoadedCircle}
+        incomingCount={incomingMembers.length}
+        mutualWatchCount={mutualWatchMembers.length}
+        onSelectTab={(tab) =>
+          setRelationExplorerSelection({ sourceAddress, tab })
+        }
+        reviewMembers={reviewMembers}
+        trustSignals={trustSignals}
+      />
 
       <ReviewCarousel
         members={sortedReviewMembers}
