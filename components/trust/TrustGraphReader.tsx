@@ -5158,16 +5158,15 @@ function TrustCircleManager({
         <div>
           <div className="flex flex-wrap items-center gap-2">
             <h2 className="text-xl font-semibold tracking-tight text-ink">
-              Circle cleaner
+              Cleaner workspace
             </h2>
             <Badge className="border-citrus/25 bg-citrus/10 text-citrus" variant="outline">
-              Cleaner
+              review flow
             </Badge>
           </div>
           <p className="mt-1 max-w-2xl text-sm text-ink/65">
-            Focus first on outgoing-only trusts: these are commitments you can
-            clean without breaking a direct mutual relation. Mutual relations
-            with weak signals stay visible as watch-only reviews.
+            Diagnosis first, then the review queue, the untrust plan and the
+            wallet signature.
           </p>
         </div>
         <div className="grid grid-cols-2 gap-2 rounded-lg border border-ink/10 bg-white/45 p-2 text-center sm:grid-cols-4">
@@ -5187,21 +5186,6 @@ function TrustCircleManager({
             <div className="text-lg font-semibold text-marine">{incomingMembers.length}</div>
             <div className="text-[11px] uppercase tracking-wide text-ink/45">Incoming</div>
           </div>
-        </div>
-      </div>
-
-      <div className="mt-4 grid gap-2 rounded-lg border border-marine/15 bg-marine/5 p-3 text-sm text-ink/70 lg:grid-cols-3">
-        <div>
-          <span className="font-semibold text-ink">Trust rule:</span>{" "}
-          trusting someone means accepting their CRC in your economy.
-        </div>
-        <div>
-          <span className="font-semibold text-ink">Goal:</span>{" "}
-          audit your outgoing commitments, not judge people.
-        </div>
-        <div>
-          <span className="font-semibold text-ink">Priority:</span>{" "}
-          review outgoing-only trusts before any action.
         </div>
       </div>
 
@@ -6013,8 +5997,8 @@ export function TrustGraphReader() {
                 Trust Cleaner
               </h1>
               <p className="max-w-2xl text-sm text-ink/65">
-                Review outgoing, incoming, mutual and raw Circles trust
-                relations from one compact surface.
+                Choose a Circles profile, review the cleaner diagnosis, then
+                prepare only the untrust actions you confirm.
               </p>
               {result?.address ? (
                 <ProfileIdentity
@@ -6047,7 +6031,7 @@ export function TrustGraphReader() {
                   if (event.key === "Escape") setProfileSearchOpen(false);
                 }}
                 aria-label="Address or profile search"
-                placeholder="0x or Circles name..."
+                placeholder="Search a Circles name or paste an address"
                 className="h-10 w-full min-w-0 rounded-lg border border-ink/15 bg-white/80 px-3 text-sm text-ink shadow-sm outline-none transition placeholder:text-ink/35 focus-visible:border-marine/40 focus-visible:ring-3 focus-visible:ring-marine/20"
               />
               {profileSearchOpen && canSearchProfile ? (
@@ -6123,11 +6107,11 @@ export function TrustGraphReader() {
                   <Search className="size-4" />
                 )}
                 {loading
-                  ? "Reading"
+                  ? "Analyzing"
                   : profileSearchLoading
                     ? "Searching"
                     : normalizedTarget
-                      ? "Read graph"
+                      ? "Analyze circle"
                       : "Find profile"}
               </Button>
               {auth.isAuthenticated ? (
@@ -6171,7 +6155,7 @@ export function TrustGraphReader() {
               id: "cleaner" as const,
               icon: <ShieldAlert className="size-4" />,
               label: "Cleaner",
-              summary: "Review and prepare untrust actions",
+              summary: "Analyze, review, plan, sign",
             },
             {
               id: "history" as const,
@@ -6216,27 +6200,6 @@ export function TrustGraphReader() {
 
       {activeView === "cleaner" ? (
         <>
-      <section className="grid gap-3 sm:grid-cols-3">
-        <CountTile
-          icon={<ArrowUpRight className="size-4" />}
-          label="Trusts"
-          tone="marine"
-          value={result?.counts.trusts ?? "-"}
-        />
-        <CountTile
-          icon={<ArrowDownLeft className="size-4" />}
-          label="Trusted by"
-          tone="citrus"
-          value={result?.counts.trustedBy ?? "-"}
-        />
-        <CountTile
-          icon={<UsersRound className="size-4" />}
-          label="Mutual"
-          tone="sage"
-          value={result?.counts.mutualTrusts ?? "-"}
-        />
-      </section>
-
       <TrustCircleManager
         analysis={cleanerAnalysis}
         onActivity={recordActivity}
@@ -6260,6 +6223,44 @@ export function TrustGraphReader() {
         sourceAddress={result?.address ?? null}
         trustSignals={trustSignals}
       />
+
+      {result ? (
+        <section className="trust-panel-soft rounded-lg p-4">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <h2 className="text-sm font-semibold text-ink">
+                Network snapshot
+              </h2>
+              <p className="mt-1 max-w-2xl text-xs leading-relaxed text-ink/55">
+                Context for the loaded circle after the cleaner decisions.
+              </p>
+            </div>
+            <Badge className="border-ink/10 bg-white/70 text-ink/55" variant="outline">
+              context
+            </Badge>
+          </div>
+          <div className="mt-3 grid gap-3 sm:grid-cols-3">
+            <CountTile
+              icon={<ArrowUpRight className="size-4" />}
+              label="Trusts"
+              tone="marine"
+              value={result.counts.trusts}
+            />
+            <CountTile
+              icon={<ArrowDownLeft className="size-4" />}
+              label="Trusted by"
+              tone="citrus"
+              value={result.counts.trustedBy}
+            />
+            <CountTile
+              icon={<UsersRound className="size-4" />}
+              label="Mutual"
+              tone="sage"
+              value={result.counts.mutualTrusts}
+            />
+          </div>
+        </section>
+      ) : null}
 
       {false ? (
         <>
