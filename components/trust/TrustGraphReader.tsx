@@ -1,7 +1,7 @@
 "use client";
 
 import type { KeyboardEvent, MouseEvent, ReactNode } from "react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   AlertCircle,
@@ -175,6 +175,23 @@ type VerificationState =
     }
   | { error: string; status: "error"; targets: DryRunTransaction[] };
 
+type ActivityEventTone = "amber" | "citrus" | "marine" | "sage" | "ink";
+
+type ActivityEvent = {
+  detail: string;
+  id: string;
+  metadata?: string[];
+  subjectAddress?: string | null;
+  targetAddress?: string | null;
+  timestamp: string;
+  title: string;
+  tone: ActivityEventTone;
+};
+
+type ActivityDraft = Omit<ActivityEvent, "id" | "timestamp"> & {
+  timestamp?: string;
+};
+
 type CircleBucket = "keep" | "review" | "incoming";
 
 type CircleMember = RelationRow & {
@@ -190,6 +207,8 @@ const FLOW_GRAPH_TRANSFER_LIMIT = 64;
 const FLOW_ROUTE_PREVIEW_LIMIT = 6;
 const CAROUSEL_MOUSE_SCROLL_DEAD_ZONE = 0.26;
 const CAROUSEL_MOUSE_SCROLL_MAX_STEP = 4.5;
+const ACTIVITY_HISTORY_KEY = "trust-cleaner:signed-action-history:v1";
+const ACTIVITY_HISTORY_LIMIT = 80;
 
 function normalizeAddress(value: string) {
   const normalized = value.trim().toLowerCase();
@@ -213,6 +232,53 @@ function jsonSafe(value: unknown): unknown {
 
 function formatJson(value: unknown) {
   return JSON.stringify(jsonSafe(value), null, 2);
+}
+
+function activityEventId() {
+  return `${Date.now().toString(36)}:${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function normalizeActivityEvents(value: unknown): ActivityEvent[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .flatMap((item) => {
+      const record = asRecord(item);
+      if (!record) return [];
+      const title = typeof record.title === "string" ? record.title : null;
+      const detail = typeof record.detail === "string" ? record.detail : null;
+      const timestamp =
+        typeof record.timestamp === "string" ? record.timestamp : null;
+      if (!title || !detail || !timestamp) return [];
+      return [
+        {
+          detail,
+          id:
+            typeof record.id === "string" && record.id
+              ? record.id
+              : activityEventId(),
+          metadata: Array.isArray(record.metadata)
+            ? record.metadata.filter((entry): entry is string => typeof entry === "string")
+            : undefined,
+          subjectAddress:
+            typeof record.subjectAddress === "string"
+              ? record.subjectAddress
+              : null,
+          targetAddress:
+            typeof record.targetAddress === "string" ? record.targetAddress : null,
+          timestamp,
+          title,
+          tone:
+            record.tone === "amber" ||
+            record.tone === "citrus" ||
+            record.tone === "marine" ||
+            record.tone === "sage" ||
+            record.tone === "ink"
+              ? record.tone
+              : "ink",
+        } satisfies ActivityEvent,
+      ];
+    })
+    .slice(0, ACTIVITY_HISTORY_LIMIT);
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -722,6 +788,122 @@ function CountTile({
         {value}
       </div>
     </div>
+  );
+}
+
+function activityToneClass(tone: ActivityEventTone) {
+  if (tone === "sage") return "border-sage/20 bg-sage/10 text-sage";
+  if (tone === "amber") return "border-amber/20 bg-amber/10 text-amber";
+  if (tone === "citrus") return "border-citrus/25 bg-citrus/10 text-citrus";
+  if (tone === "marine") return "border-marine/20 bg-marine/10 text-marine";
+  return "border-ink/10 bg-sand/70 text-ink/60";
+}
+
+function formatActivityTime(timestamp: string) {
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return timestamp;
+  return date.toLocaleString(undefined, {
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    month: "short",
+  });
+}
+
+function ActivityHistoryPanel({
+  events,
+  onClear,
+}: {
+  events: ActivityEvent[];
+  onClear: () => void;
+}) {
+  const visibleEvents = events.slice(0, 8);
+
+  return (
+    <section className="trust-panel rounded-lg p-4 sm:p-5">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-lg font-semibold tracking-tight text-ink">
+              Signed action history
+            </h2>
+            <Badge className="border-marine/20 bg-marine/10 text-marine" variant="outline">
+              Local only
+            </Badge>
+          </div>
+          <p className="mt-1 max-w-2xl text-sm text-ink/65">
+            Only successful wallet signatures are stored here, with targets and
+            transaction hashes.
+          </p>
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          className="border-ink/15 bg-white/70 hover:border-citrus/30 hover:bg-white"
+          disabled={events.length === 0}
+          onClick={onClear}
+        >
+          <Trash2 className="size-4" />
+          Clear history
+        </Button>
+      </div>
+
+      <div className="mt-4">
+        {visibleEvents.length > 0 ? (
+          <div className="grid gap-2">
+            {visibleEvents.map((event) => (
+              <div
+                key={event.id}
+                className="rounded-lg border border-ink/10 bg-white/55 p-3"
+              >
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge className={activityToneClass(event.tone)} variant="outline">
+                        {event.title}
+                      </Badge>
+                      <span className="text-xs font-medium text-ink/45">
+                        {formatActivityTime(event.timestamp)}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-sm leading-relaxed text-ink/70">
+                      {event.detail}
+                    </p>
+                  </div>
+                  {event.subjectAddress ? (
+                    <span className="shrink-0 rounded-md bg-sand/70 px-2 py-1 font-mono text-[11px] text-ink/55">
+                      {shortenAddress(event.subjectAddress)}
+                    </span>
+                  ) : null}
+                </div>
+                {event.metadata?.length ? (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {event.metadata.slice(0, 6).map((entry) => (
+                      <span
+                        key={entry}
+                        className="rounded-md bg-sand/70 px-2 py-1 text-[11px] font-medium text-ink/55"
+                      >
+                        {entry}
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ))}
+            {events.length > visibleEvents.length ? (
+              <div className="rounded-lg border border-dashed border-ink/15 bg-white/35 p-3 text-xs font-medium text-ink/50">
+                {events.length - visibleEvents.length} older signed action
+                {events.length - visibleEvents.length > 1 ? "s" : ""} kept locally.
+              </div>
+            ) : null}
+          </div>
+        ) : (
+          <div className="rounded-lg border border-dashed border-ink/15 bg-white/35 p-4 text-sm text-ink/55">
+            No signed action yet. Successful wallet signatures will appear here.
+          </div>
+        )}
+      </div>
+    </section>
   );
 }
 
@@ -2865,17 +3047,21 @@ function CleanupBar({
 
 function PreparedPlan({
   currentMembers,
+  onActivity,
   onRefreshGraph,
   profiles,
   readVersion,
   selectedRows,
+  sourceAddress,
   trustSignals,
 }: {
   currentMembers: CircleMember[];
+  onActivity: (event: ActivityDraft) => void;
   onRefreshGraph: () => Promise<boolean>;
   profiles: Record<string, CirclesProfile>;
   readVersion: string | null;
   selectedRows: CircleMember[];
+  sourceAddress: string | null;
   trustSignals: Record<string, TrustSignal>;
 }) {
   const wallet = useWallet();
@@ -3029,11 +3215,12 @@ function PreparedPlan({
       setSignatureState({ hashes: [], status: "idle" });
       setVerificationState({ status: "idle", targets: [] });
     } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : "Unable to build the transaction draft.";
       setDryRun({
-        error:
-          err instanceof Error
-            ? err.message
-            : "Unable to build the transaction draft.",
+        error: message,
         status: "error",
         transactions: [],
       });
@@ -3094,12 +3281,27 @@ function PreparedPlan({
       );
       setSignatureState({ hashes, status: "success" });
       setVerificationState({ status: "idle", targets: dryRun.transactions });
+      onActivity({
+        detail: `${dryRun.transactions.length} untrust${
+          dryRun.transactions.length > 1 ? "s" : ""
+        } signed. ${hashes.length} transaction hash${
+          hashes.length > 1 ? "es" : ""
+        } returned by the Circles host.`,
+        metadata: [
+          ...dryRun.transactions
+            .slice(0, 3)
+            .map((tx) => `${tx.targetName}: ${shortenAddress(tx.targetAddress)}`),
+          ...hashes.slice(0, 3).map((hash) => `tx ${shortenAddress(hash)}`),
+        ],
+        subjectAddress: sourceAddress,
+        title: "Untrust signed",
+        tone: "sage",
+      });
     } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "The signature was rejected or failed.";
       setSignatureState({
-        error:
-          err instanceof Error
-            ? err.message
-            : "The signature was rejected or failed.",
+        error: message,
         hashes: [],
         status: "error",
       });
@@ -3890,6 +4092,7 @@ function ReviewCarousel({
 
 function TrustCircleManager({
   analysis,
+  onActivity,
   onClear,
   onLoadProfile,
   onPrepare,
@@ -3907,6 +4110,7 @@ function TrustCircleManager({
   trustSignals,
 }: {
   analysis: CleanerAnalysis;
+  onActivity: (event: ActivityDraft) => void;
   onClear: () => void;
   onLoadProfile: (profile: ProfileSearchResult) => void;
   onPrepare: () => void;
@@ -4386,10 +4590,12 @@ function TrustCircleManager({
       <div ref={planRef} className="mt-4 scroll-mt-24">
         <PreparedPlan
           currentMembers={allMembers}
+          onActivity={onActivity}
           onRefreshGraph={onRefreshGraph}
           profiles={profiles}
           readVersion={readVersion}
           selectedRows={selectedRows}
+          sourceAddress={sourceAddress}
           trustSignals={trustSignals}
         />
       </div>
@@ -4675,6 +4881,46 @@ export function TrustGraphReader() {
   const [cleanupPreviewOpen, setCleanupPreviewOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [activityEvents, setActivityEvents] = useState<ActivityEvent[]>([]);
+  const activityHistoryLoadedRef = useRef(false);
+
+  useEffect(() => {
+    queueMicrotask(() => {
+      try {
+        const stored = window.localStorage.getItem(ACTIVITY_HISTORY_KEY);
+        setActivityEvents(normalizeActivityEvents(stored ? JSON.parse(stored) : []));
+      } catch {
+        setActivityEvents([]);
+      } finally {
+        activityHistoryLoadedRef.current = true;
+      }
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!activityHistoryLoadedRef.current) return;
+    try {
+      window.localStorage.setItem(
+        ACTIVITY_HISTORY_KEY,
+        JSON.stringify(activityEvents),
+      );
+    } catch {}
+  }, [activityEvents]);
+
+  const recordActivity = useCallback((event: ActivityDraft) => {
+    setActivityEvents((current) => [
+      {
+        ...event,
+        id: activityEventId(),
+        timestamp: event.timestamp ?? new Date().toISOString(),
+      },
+      ...current,
+    ].slice(0, ACTIVITY_HISTORY_LIMIT));
+  }, []);
+
+  function clearActivityHistory() {
+    setActivityEvents([]);
+  }
 
   useEffect(() => {
     if (auth.address) {
@@ -4787,6 +5033,8 @@ export function TrustGraphReader() {
       await rawRelationsQuery.queryNextPage();
       const rawPage = rawRelationsQuery.currentPage;
       const rawResults = rawPage?.results ?? [];
+      const fetchedAt = new Date().toISOString();
+      const elapsedMs = Date.now() - startedAt;
 
       setResult({
         address: normalized,
@@ -4805,15 +5053,15 @@ export function TrustGraphReader() {
           hasMore: rawPage?.hasMore ?? false,
           results: rawResults,
         }) as RawRelationsPage,
-        fetchedAt: new Date().toISOString(),
-        elapsedMs: Date.now() - startedAt,
+        fetchedAt,
+        elapsedMs,
       });
       return true;
     } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Unable to fetch trust graph.";
       setResult(null);
-      setError(
-        err instanceof Error ? err.message : "Unable to fetch trust graph.",
-      );
+      setError(message);
       return false;
     } finally {
       setLoading(false);
@@ -5249,8 +5497,14 @@ export function TrustGraphReader() {
         />
       </section>
 
+      <ActivityHistoryPanel
+        events={activityEvents}
+        onClear={clearActivityHistory}
+      />
+
       <TrustCircleManager
         analysis={cleanerAnalysis}
+        onActivity={recordActivity}
         onClear={clearCleanupSelection}
         onLoadProfile={loadSearchProfile}
         onPrepare={() => setCleanupPreviewOpen(true)}
