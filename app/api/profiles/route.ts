@@ -65,7 +65,7 @@ function stringField(record: Record<string, unknown> | null, keys: string[]) {
 
 function profileTypeLabel(rawType: string | null | undefined) {
   const avatarType = rawType?.toLowerCase() ?? "";
-  if (avatarType.includes("group")) return "Groupe";
+  if (avatarType.includes("group")) return "Group";
   if (avatarType.includes("org")) return "Org";
   if (avatarType.includes("human") || avatarType.includes("person")) {
     return "User";

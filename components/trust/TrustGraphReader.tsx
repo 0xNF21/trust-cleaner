@@ -382,8 +382,9 @@ function trustBandTone(band: TrustBand) {
 
 function scoreLabel(signal?: TrustSignal | null) {
   if (!signal || signal.trustScore === null) return "No score";
+  const level = signal.trustLevel?.replace(/^trust\s+/i, "");
   return signal.trustLevel
-    ? `${signal.trustScore} / ${signal.trustLevel}`
+    ? `${signal.trustScore} / ${level}`
     : `${signal.trustScore}`;
 }
 
@@ -397,18 +398,18 @@ function cleanupPriority(signal?: TrustSignal | null) {
 
 function cleanupReason(signal?: TrustSignal | null) {
   const band = trustBand(signal);
-  if (band === "low") return "Untrust probable";
-  if (band === "medium") return "Confiance moyenne";
-  if (band === "strong") return "Confiance forte";
-  return "Confiance inconnue";
+  if (band === "low") return "Likely untrust";
+  if (band === "medium") return "Medium trust";
+  if (band === "strong") return "Strong trust";
+  return "Unknown trust";
 }
 
 function cleanupHint(signal?: TrustSignal | null) {
   const band = trustBand(signal);
-  if (band === "low") return "Priorite de revue";
-  if (band === "medium") return "Verifier contexte";
-  if (band === "strong") return "Untrust avec prudence";
-  return "Revue manuelle";
+  if (band === "low") return "Review priority";
+  if (band === "medium") return "Check context";
+  if (band === "strong") return "Untrust with caution";
+  return "Manual review";
 }
 
 function decisionToneClass(tone: "amber" | "citrus" | "marine" | "sage") {
@@ -419,15 +420,15 @@ function decisionToneClass(tone: "amber" | "citrus" | "marine" | "sage") {
 }
 
 function planDecisionLabel(decision: PlanDecision) {
-  if (decision === "confirm") return "Confirmer untrust";
-  if (decision === "later") return "A verifier";
-  return "Garder";
+  if (decision === "confirm") return "Confirm untrust";
+  if (decision === "later") return "Review later";
+  return "Keep";
 }
 
 function planDecisionHelper(decision: PlanDecision) {
-  if (decision === "confirm") return "Pret pour l'etape signature.";
-  if (decision === "later") return "Conserver dans le plan, sans signer maintenant.";
-  return "Ne pas signer, a retirer du plan si tu confirmes.";
+  if (decision === "confirm") return "Ready for the signature step.";
+  if (decision === "later") return "Keep it in the plan, without signing now.";
+  return "Do not sign this one; remove it from the plan if confirmed.";
 }
 
 function planDecisionTone(decision: PlanDecision) {
@@ -437,16 +438,16 @@ function planDecisionTone(decision: PlanDecision) {
 }
 
 function accountAgeLabel(signal?: TrustSignal | null) {
-  if (!signal) return "Inconnu";
-  if (signal.ageDays <= 0) return "Inconnu";
-  if (signal.ageDays < 30) return `${signal.ageDays} j - recent`;
-  if (signal.ageDays < 180) return `${signal.ageDays} j`;
-  return `${signal.ageDays} j - ancien`;
+  if (!signal) return "Unknown";
+  if (signal.ageDays <= 0) return "Unknown";
+  if (signal.ageDays < 30) return `${signal.ageDays}d - recent`;
+  if (signal.ageDays < 180) return `${signal.ageDays}d`;
+  return `${signal.ageDays}d - old`;
 }
 
 function networkLabel(signal?: TrustSignal | null) {
-  if (!signal) return "Inconnu";
-  return `${signal.mutualCount} mutuels / ${signal.inDegree} in / ${signal.outDegree} out`;
+  if (!signal) return "Unknown";
+  return `${signal.mutualCount} mutual / ${signal.inDegree} in / ${signal.outDegree} out`;
 }
 
 function cleanerStatus(
@@ -460,35 +461,35 @@ function cleanerStatus(
 
   if (member.bucket === "keep") {
     return {
-      label: "A garder",
-      reasons: ["Trust mutuel direct", `Type: ${accountType}`, networkLabel(signal)],
+      label: "Keep",
+      reasons: ["Direct mutual trust", `Type: ${accountType}`, networkLabel(signal)],
       summary:
-        "Relation mutuelle: elle ne doit pas etre proposee comme untrust automatique.",
+        "Mutual relation: it should not be suggested as an automatic untrust.",
       tone: "sage" as const,
     };
   }
 
   if (member.bucket === "incoming") {
     return {
-      label: "Sans risque sortant",
+      label: "No outgoing risk",
       reasons: [
-        "Ce profil te truste",
+        "This profile trusts you",
         `Type: ${accountType}`,
-        "Tu ne prends pas ses CRC dans ton economie",
+        "You do not accept their CRC in your economy",
       ],
       summary:
-        "Relation entrante seule: elle ne cree pas d'engagement sortant pour toi.",
+        "Incoming-only relation: it does not create an outgoing commitment for you.",
       tone: "marine" as const,
     };
   }
 
   const weakSignals = [
-    band === "low" || band === "unknown" ? "confiance faible ou inconnue" : null,
-    signal?.backerStatus === "none" ? "pas backer direct" : null,
-    signal?.backerStatus === "unknown" ? "backer inconnu" : null,
-    signal && signal.ageDays > 0 && signal.ageDays < 30 ? "compte recent" : null,
-    signal && signal.inDegree === 0 && signal.outDegree === 0 ? "reseau vide" : null,
-    !identifiable ? "profil peu identifiable" : null,
+    band === "low" || band === "unknown" ? "low or unknown trust" : null,
+    signal?.backerStatus === "none" ? "not a direct backer" : null,
+    signal?.backerStatus === "unknown" ? "unknown backer status" : null,
+    signal && signal.ageDays > 0 && signal.ageDays < 30 ? "recent account" : null,
+    signal && signal.inDegree === 0 && signal.outDegree === 0 ? "empty network" : null,
+    !identifiable ? "low-identifiability profile" : null,
   ].filter(Boolean) as string[];
   const contextSignals = [`Type: ${accountType}`, scoreLabel(signal), accountAgeLabel(signal)];
 
@@ -497,26 +498,26 @@ function cleanerStatus(
       label: "Urgent",
       reasons: weakSignals,
       summary:
-        "Trust sortant seul avec plusieurs signaux faibles. A verifier en premier pour untrust.",
+        "Outgoing-only trust with several weak signals. Review first for untrust.",
       tone: "citrus" as const,
     };
   }
 
   if (weakSignals.length >= 2 || band === "low" || band === "unknown") {
     return {
-      label: "Untrust probable",
-      reasons: weakSignals.length ? weakSignals : ["signaux incomplets"],
+      label: "Likely untrust",
+      reasons: weakSignals.length ? weakSignals : ["incomplete signals"],
       summary:
-        "Trust sortant seul avec signaux faibles. Candidat naturel a verifier pour untrust.",
+        "Outgoing-only trust with weak signals. Natural candidate to review for untrust.",
       tone: "amber" as const,
     };
   }
 
   return {
-    label: "A verifier",
-    reasons: ["trust sortant seul", ...contextSignals],
+    label: "Review",
+    reasons: ["outgoing-only trust", ...contextSignals],
     summary:
-      "Trust sortant seul avec signaux mixtes. La decision reste manuelle.",
+      "Outgoing-only trust with mixed signals. The decision remains manual.",
     tone: "amber" as const,
   };
 }
@@ -553,9 +554,9 @@ function cleanerReviewScore(
 }
 
 function circleBucketLabel(bucket: CircleBucket) {
-  if (bucket === "keep") return "Mutuel";
-  if (bucket === "review") return "Trust sortant seul";
-  return "Trust entrant seul";
+  if (bucket === "keep") return "Mutual";
+  if (bucket === "review") return "Outgoing-only trust";
+  return "Incoming-only trust";
 }
 
 function circleBucketTone(bucket: CircleBucket) {
@@ -566,12 +567,12 @@ function circleBucketTone(bucket: CircleBucket) {
 
 function relationSentence(member: CircleMember, name: string) {
   if (member.bucket === "keep") {
-    return `Trust mutuel: vous acceptez chacun les CRC de l'autre.`;
+    return "Mutual trust: you each accept the other's CRC.";
   }
   if (member.bucket === "review") {
-    return `Tu acceptes les CRC de ${name}, sans trust retour detecte.`;
+    return `You accept ${name}'s CRC, with no direct trust back detected.`;
   }
-  return `${name} accepte tes CRC; toi, tu ne prends pas de risque sortant.`;
+  return `${name} accepts your CRC; you do not take outgoing risk.`;
 }
 
 function hasPositiveFlow(value: string) {
@@ -587,13 +588,13 @@ function profileTypeLabel(profile?: CirclesProfile | null) {
   if (explicit) return explicit;
 
   const avatarType = profile?.avatarType?.toLowerCase() ?? "";
-  if (avatarType.includes("group")) return "Groupe";
+  if (avatarType.includes("group")) return "Group";
   if (avatarType.includes("org")) return "Org";
   if (avatarType.includes("human") || avatarType.includes("person")) {
     return "User";
   }
-  if (profile?.name?.trim()) return "Profil";
-  return "Adresse crypto";
+  if (profile?.name?.trim()) return "Profile";
+  return "Crypto address";
 }
 
 function collectPathfinderAddresses(
@@ -625,49 +626,49 @@ function buildTrustDecision(
   const band = trustBand(signal);
   const score = scoreLabel(signal);
   const mutuals = signal?.mutualCount ?? 0;
-  const network = signal ? `${signal.inDegree} in / ${signal.outDegree} out` : "reseau en chargement";
+  const network = signal ? `${signal.inDegree} in / ${signal.outDegree} out` : "network loading";
 
   if (member.bucket === "keep") {
     return {
-      action: "Aucun untrust recommande.",
+      action: "No untrust recommended.",
       factors: [
-        "Relation bidirectionnelle directe",
-        `${mutuals} mutuals detectes`,
-        `Reseau: ${network}`,
+        "Direct bidirectional relation",
+        `${mutuals} mutuals detected`,
+        `Network: ${network}`,
       ],
-      label: "Garder",
+      label: "Keep",
       summary:
-        "Ce trust mutuel aide la circulation des CRC. A conserver sauf si la relation sociale n'est plus fiable.",
+        "This mutual trust helps CRC circulation. Keep it unless the social relation is no longer reliable.",
       tone: "sage" as const,
     };
   }
 
   if (member.bucket === "incoming") {
     return {
-      action: "Pas d'action sortante: tu ne trust pas ce profil.",
+      action: "No outgoing action: you do not trust this profile.",
       factors: [
-        `${name} accepte tes CRC`,
-        "Aucun engagement sortant de ta part",
-        `Score observe: ${score}`,
+        `${name} accepts your CRC`,
+        "No outgoing commitment from you",
+        `Observed score: ${score}`,
       ],
-      label: "Pas d'action",
+      label: "No action",
       summary:
-        "Cette relation peut aider la reception vers toi, sans te faire accepter ses CRC.",
+        "This relation can help reception toward you without making you accept their CRC.",
       tone: "marine" as const,
     };
   }
 
   const urgent = band === "low" || band === "unknown";
   return {
-    action: "Verifier si tu connais vraiment ce profil et si tu veux accepter ses CRC.",
+    action: "Check whether you really know this profile and want to accept their CRC.",
     factors: [
-      "Engagement sortant actif",
-      "Pas de trust retour direct",
-      `Score observe: ${score}`,
+      "Active outgoing commitment",
+      "No direct trust back",
+      `Observed score: ${score}`,
     ],
-    label: urgent ? "Revoir en priorite" : "Revoir contexte",
+    label: urgent ? "Priority review" : "Review context",
     summary:
-      "Tu acceptes ses CRC dans ton economie. Sans retour direct, ce trust doit etre volontaire et justifie.",
+      "You accept their CRC in your economy. Without direct trust back, this trust should be intentional and justified.",
     tone: urgent ? ("citrus" as const) : ("amber" as const),
   };
 }
@@ -1179,14 +1180,14 @@ function CleanupPlanPanel({
         <div>
           <div className="flex flex-wrap items-center gap-2">
             <h2 className="text-lg font-semibold tracking-tight text-ink">
-              Plan d&apos;untrust
+              Untrust plan
             </h2>
             <Badge className="border-citrus/25 bg-citrus/10 text-citrus" variant="outline">
               Dry run only
             </Badge>
           </div>
           <p className="mt-1 max-w-2xl text-sm text-ink/65">
-            Selectionne les trusts sortants seuls a preparer pour untrust.
+            Select outgoing-only trusts to prepare for untrust.
           </p>
         </div>
         <div className="rounded-lg border border-ink/10 bg-white/50 px-3 py-2 text-sm font-semibold text-ink">
@@ -1197,10 +1198,10 @@ function CleanupPlanPanel({
       <div className="mt-4 rounded-lg border border-ink/10 bg-white/35 p-3">
         {!hasCandidates ? (
           <div className="flex flex-col gap-2 rounded-lg border border-dashed border-ink/15 bg-white/40 p-4 text-sm text-ink/60">
-            <span className="font-semibold text-ink">Aucun candidat untrust.</span>
+            <span className="font-semibold text-ink">No untrust candidate.</span>
             <span>
               This wallet has no outgoing-only trust in the loaded SDK lists, so
-              Trust Cleaner ne propose aucun untrust.
+              Trust Cleaner does not suggest any untrust.
             </span>
           </div>
         ) : (
@@ -1227,7 +1228,7 @@ function CleanupPlanPanel({
                     checked={selected}
                     onChange={() => onToggle(id)}
                     className="size-4 shrink-0 accent-[#251b9f]"
-                    aria-label={`Selectionner untrust pour ${name}`}
+                    aria-label={`Select untrust for ${name}`}
                   />
                   <ProfileAvatar address={row.address} profile={profile} />
                   <div className="min-w-0 flex-1">
@@ -1259,7 +1260,7 @@ function CleanupPlanPanel({
             disabled={!hasCandidates || selectedRows.length === candidates.length}
             onClick={onSelectAll}
           >
-            Tout selectionner
+            Select all
           </Button>
           <Button
             type="button"
@@ -1268,7 +1269,7 @@ function CleanupPlanPanel({
             disabled={!hasSelection}
             onClick={onClear}
           >
-            Vider
+            Clear
           </Button>
           <Button
             type="button"
@@ -1276,7 +1277,7 @@ function CleanupPlanPanel({
             onClick={onPrepare}
           >
             <ClipboardCheck className="size-4" />
-            Preparer le plan
+            Prepare plan
           </Button>
         </div>
       </div>
@@ -1372,7 +1373,7 @@ function CirclePersonCard({
             checked={cleanupSelected}
             onChange={onToggleCleanup}
             className="mt-3 size-4 shrink-0 accent-[#251b9f]"
-            aria-label={`Ajouter ${name} au plan d'untrust`}
+            aria-label={`Add ${name} to the untrust plan`}
           />
         ) : null}
         <ProfileAvatar address={member.address} profile={profile} />
@@ -1405,7 +1406,7 @@ function CirclePersonCard({
               {type}
             </Badge>
             <Badge className={trustBandTone(trustBand(signal))} variant="outline">
-              Confiance {scoreLabel(signal)}
+              Score {scoreLabel(signal)}
             </Badge>
             {isReview ? (
               <Badge className="border-ink/10 bg-sand/70 text-ink/60" variant="outline">
@@ -1561,10 +1562,10 @@ function graphNodeLabel(
 }
 
 function backerLabel(signal?: TrustSignal | null) {
-  if (!signal) return "Inconnu";
+  if (!signal) return "Unknown";
   if (signal.backerStatus === "direct") return "Direct";
-  if (signal.backerStatus === "none") return "Non";
-  return "Inconnu";
+  if (signal.backerStatus === "none") return "No";
+  return "Unknown";
 }
 
 function graphRelationLabel({
@@ -1577,11 +1578,11 @@ function graphRelationLabel({
   sourceAddress: string | null;
 }) {
   const normalizedSource = sourceAddress?.toLowerCase() ?? "";
-  if (normalizedSource && address === normalizedSource) return "Adresse lue";
-  if (!member) return "Hors cercle charge";
-  if (member.bucket === "keep") return "Confiance mutuelle";
-  if (member.bucket === "review") return "Tu trustes, non mutuel";
-  return "Il te truste, non mutuel";
+  if (normalizedSource && address === normalizedSource) return "Loaded address";
+  if (!member) return "Outside loaded circle";
+  if (member.bucket === "keep") return "Mutual trust";
+  if (member.bucket === "review") return "You trust, non-mutual";
+  return "Trusts you, non-mutual";
 }
 
 function graphProfileResult(
@@ -2341,14 +2342,14 @@ function FlowDirectionCard({
 
       {pathfinder.status === "idle" ? (
         <div className="mt-3 rounded-md bg-sand/70 px-2.5 py-2 text-xs text-ink/55">
-          Selectionne un profil pour calculer ce sens.
+          Select a profile to calculate this direction.
         </div>
       ) : null}
 
       {pathfinder.status === "loading" ? (
         <div className="mt-3 flex items-center gap-2 rounded-md bg-sand/70 px-2.5 py-2 text-xs font-medium text-ink/60">
           <RefreshCw className="size-3.5 animate-spin" />
-          Calcul du flux
+          Calculating flow
         </div>
       ) : null}
 
@@ -2371,25 +2372,25 @@ function FlowDirectionCard({
               variant="outline"
             >
               {hasPositiveFlow(pathfinder.preview.maxFlow)
-                ? "Flux possible"
-                : "Aucun flux"}
+                ? "Flow available"
+                : "No flow"}
             </Badge>
             <span className="text-[11px] font-medium text-ink/45">
-              Max {pathfinder.preview.maxTransfers} transferts internes
+              Max {pathfinder.preview.maxTransfers} internal transfers
             </span>
           </div>
           <div className="mt-2 grid gap-2 sm:grid-cols-3">
             <FlowMetric
-              label="Limite max possible"
+              label="Max possible limit"
               value={`${pathfinder.preview.maxFlowCrc} CRC`}
             />
             <FlowMetric
-              label="Route reconstruite"
+              label="Rebuilt route"
               value={`${pathfinder.preview.requestedFlowCrc} / ${pathfinder.preview.targetFlowCrc}`}
             />
             <FlowMetric
-              label="Etapes route max"
-              value={`${pathfinder.preview.transfers.length} etape${
+              label="Max-route steps"
+              value={`${pathfinder.preview.transfers.length} step${
                 pathfinder.preview.transfers.length > 1 ? "s" : ""
               }`}
             />
@@ -2432,8 +2433,8 @@ function FlowRoutePreview({
               {title}
             </div>
             <p className="mt-1 text-xs leading-relaxed text-ink/60">
-              Route reconstruite pour la limite max. Les fragments internes ne
-              sont pas des totaux a additionner.
+              Rebuilt route for the max limit. Internal fragments are not
+              totals to add together.
             </p>
           </div>
           <Badge className="border-marine/20 bg-marine/10 text-marine" variant="outline">
@@ -2445,24 +2446,24 @@ function FlowRoutePreview({
       <div className="mt-3">
         <div className="grid gap-2 md:grid-cols-3">
           <FlowMetric
-            label="Montant route"
+            label="Route amount"
             value={`${preview.requestedFlowCrc} CRC`}
           />
           <FlowMetric
-            label="Limite max du sens"
+            label="Direction max limit"
             value={`${preview.maxFlowCrc} CRC`}
           />
           <FlowMetric
-            label="Lecture"
-            value="Fragments internes"
+            label="Read"
+            value="Internal fragments"
           />
         </div>
 
         <div className="mt-3 flex items-start gap-2 rounded-md border border-marine/15 bg-marine/5 px-3 py-2 text-xs leading-relaxed text-ink/65">
           <Info className="mt-0.5 size-3.5 shrink-0 text-marine" />
           <span>
-            Un fragment qui passe par plusieurs comptes reapparait sur plusieurs
-            hops: ce sont les etapes du meme morceau de flux.
+            A fragment crossing several accounts can appear across several
+            hops: these are steps of the same flow piece.
           </span>
         </div>
       </div>
@@ -2479,7 +2480,7 @@ function FlowRoutePreview({
       {visibleTransfers.length > 0 ? (
         <details className="mt-3 rounded-lg border border-ink/10 bg-white/45 p-3">
           <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-ink/50">
-            Details bruts des fragments ({preview.transfers.length})
+            Raw fragment details ({preview.transfers.length})
           </summary>
           <div className="mt-3 space-y-1.5">
             {visibleTransfers.map((transfer, index) => (
@@ -2505,15 +2506,15 @@ function FlowRoutePreview({
             ))}
             {hiddenTransfers > 0 ? (
               <div className="rounded-md bg-sand/70 px-2.5 py-2 text-xs font-medium text-ink/55">
-                +{hiddenTransfers} transfert{hiddenTransfers > 1 ? "s" : ""} interne
-                {hiddenTransfers > 1 ? "s" : ""} dans cette route max.
+                +{hiddenTransfers} internal transfer
+                {hiddenTransfers > 1 ? "s" : ""} in this max route.
               </div>
             ) : null}
           </div>
         </details>
       ) : (
         <p className="mt-3 rounded-md bg-sand/70 px-2.5 py-2 text-xs text-ink/60">
-          Pathfinder ne trouve pas de route detaillee pour cette limite.
+          Pathfinder did not find a detailed route for this limit.
         </p>
       )}
     </details>
@@ -2549,13 +2550,13 @@ function FlowPathPanel({
       <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
         <div>
           <div className="text-xs font-semibold uppercase tracking-wide text-ink/45">
-            Chemin de circulation
+            Circulation path
           </div>
           <p className="mt-1 max-w-3xl text-sm leading-relaxed text-ink/65">
-            Le sens compte. Si {memberName} doit envoyer des CRC vers toi, regarde le
-            sens <span className="font-semibold text-ink">{memberName} -&gt; {sourceLabel}</span>:
-            ce sens correspond au Send limit dans Gnosis. Le second sens
-            repond a la question inverse.
+            Direction matters. If {memberName} needs to send CRC to you, check
+            <span className="font-semibold text-ink"> {memberName} -&gt; {sourceLabel}</span>:
+            this direction matches the Send limit in Gnosis. The second
+            direction answers the reverse question.
           </p>
         </div>
         <Badge className="w-fit border-ink/10 bg-sand/70 text-ink/60" variant="outline">
@@ -2567,14 +2568,14 @@ function FlowPathPanel({
         <FlowDirectionCard
           icon={<ArrowDownLeft className="size-4" />}
           pathfinder={memberToSource}
-          subtitle="Sens a regarder quand ce profil envoie vers l'adresse lue."
+          subtitle="Direction to check when this profile sends to the loaded address."
           title={`${memberName} -> ${sourceLabel}`}
           tone="sage"
         />
         <FlowDirectionCard
           icon={<ArrowUpRight className="size-4" />}
           pathfinder={sourceToMember}
-          subtitle="Question inverse: ce que l'adresse lue pourrait envoyer a ce profil."
+          subtitle="Reverse question: what the loaded address could send to this profile."
           title={`${sourceLabel} -> ${memberName}`}
           tone="marine"
         />
@@ -2586,7 +2587,7 @@ function FlowPathPanel({
         pathfinder={memberToSource}
         profiles={profiles}
         sourceAddress={sourceAddress}
-        title={`Route limite max: ${memberName} -> ${sourceLabel}`}
+        title={`Max-limit route: ${memberName} -> ${sourceLabel}`}
         trustSignals={trustSignals}
       />
       <FlowRoutePreview
@@ -2595,7 +2596,7 @@ function FlowPathPanel({
         pathfinder={sourceToMember}
         profiles={profiles}
         sourceAddress={sourceAddress}
-        title={`Route limite max inverse: ${sourceLabel} -> ${memberName}`}
+        title={`Reverse max-limit route: ${sourceLabel} -> ${memberName}`}
         trustSignals={trustSignals}
       />
     </div>
@@ -2638,8 +2639,7 @@ function MemberDetailPanel({
   if (!member) {
     return (
       <aside className="rounded-lg border border-dashed border-ink/15 bg-white/35 p-4 text-sm text-ink/60">
-        Selectionne une personne pour voir la relation, les criteres et la
-        decision possible.
+        Select a person to view the relation, criteria and possible decision.
       </aside>
     );
   }
@@ -2682,7 +2682,7 @@ function MemberDetailPanel({
         <div className="grid grid-cols-2 gap-2">
           <div className="rounded-lg border border-ink/10 bg-white/55 p-3">
             <div className="text-xs font-semibold uppercase tracking-wide text-ink/45">
-              Type compte
+              Account type
             </div>
             <div className="mt-1 text-sm font-semibold text-ink">
               {type}
@@ -2690,7 +2690,7 @@ function MemberDetailPanel({
           </div>
           <div className="rounded-lg border border-ink/10 bg-white/55 p-3">
             <div className="text-xs font-semibold uppercase tracking-wide text-ink/45">
-              Confiance
+              Trust score
             </div>
             <div className="mt-1 text-sm font-semibold text-ink">
               {scoreLabel(signal)}
@@ -2706,7 +2706,7 @@ function MemberDetailPanel({
           </div>
           <div className="rounded-lg border border-ink/10 bg-white/55 p-3">
             <div className="text-xs font-semibold uppercase tracking-wide text-ink/45">
-              Age compte
+              Account age
             </div>
             <div className="mt-1 text-sm font-semibold text-ink">
               {accountAgeLabel(signal)}
@@ -2714,7 +2714,7 @@ function MemberDetailPanel({
           </div>
           <div className="rounded-lg border border-ink/10 bg-white/55 p-3">
             <div className="text-xs font-semibold uppercase tracking-wide text-ink/45">
-              Reseau
+              Network
             </div>
             <div className="mt-1 text-sm font-semibold text-ink">
               {networkLabel(signal)}
@@ -2725,7 +2725,7 @@ function MemberDetailPanel({
         <div className="flex min-w-0 flex-col gap-2">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="text-xs font-semibold uppercase tracking-wide text-ink/45">
-              Statut cleaner
+              Cleaner status
             </div>
             <Badge className={decisionToneClass(status.tone)} variant="outline">
               {status.label}
@@ -2754,7 +2754,7 @@ function MemberDetailPanel({
                   onClick={() => onToggleCleanup(cleanupRowId(member))}
                 >
                   <ClipboardCheck className="size-4" />
-                  {selectedForCleanup ? "Retirer du plan" : "Untrust"}
+                  {selectedForCleanup ? "Remove from plan" : "Untrust"}
                 </Button>
               ) : null}
         </div>
@@ -2768,9 +2768,9 @@ function MemberDetailPanel({
           }}
         >
           <summary className="cursor-pointer text-sm font-semibold text-ink">
-            Analyse circulation (V2)
+            Flow analysis (V2)
             <span className="ml-2 text-xs font-medium text-ink/45">
-              optionnel
+              optional
             </span>
           </summary>
           <div className="mt-3">
@@ -2814,7 +2814,7 @@ function CleanupBar({
         profiles[member.address],
       );
       if (status.label === "Urgent") counts.urgent += 1;
-      else if (status.label === "Untrust probable") counts.probable += 1;
+      else if (status.label === "Likely untrust") counts.probable += 1;
       else counts.verify += 1;
       return counts;
     },
@@ -2826,7 +2826,7 @@ function CleanupBar({
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="text-sm font-semibold">
-            {selectedRows.length} profil{selectedRows.length > 1 ? "s" : ""} ajoute{selectedRows.length > 1 ? "s" : ""} au plan
+            {selectedRows.length} profile{selectedRows.length > 1 ? "s" : ""} added to the plan
           </div>
           <div className="mt-1 flex flex-wrap gap-1.5 text-[11px] font-medium">
             {summary.urgent > 0 ? (
@@ -2841,21 +2841,21 @@ function CleanupBar({
             ) : null}
             {summary.verify > 0 ? (
               <span className="rounded-md bg-white/10 px-2 py-0.5 text-white/80">
-                {summary.verify} a verifier
+                {summary.verify} to review
               </span>
             ) : null}
           </div>
           <div className="mt-1 text-xs text-white/65">
-            Rien ne part automatiquement. Aucune signature n&apos;est envoyee.
+            Nothing is sent automatically. No signature is submitted.
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button type="button" variant="outline" onClick={onClear}>
-            Vider
+            Clear
           </Button>
           <Button type="button" onClick={onPrepare}>
             <ClipboardCheck className="size-4" />
-            Voir le plan d&apos;untrust
+            View untrust plan
           </Button>
         </div>
       </div>
@@ -2909,26 +2909,26 @@ function PreparedPlan({
   });
   const groupedRows = [
     {
-      helper: "A verifier en premier avant signature.",
+      helper: "Review first before signature.",
       id: "urgent",
       rows: preparedRows.filter((row) => row.status.label === "Urgent"),
       title: "Urgent",
     },
     {
-      helper: "Candidats naturels a l'untrust, a valider un par un.",
+      helper: "Natural untrust candidates, validate one by one.",
       id: "probable",
-      rows: preparedRows.filter((row) => row.status.label === "Untrust probable"),
-      title: "Untrust probable",
+      rows: preparedRows.filter((row) => row.status.label === "Likely untrust"),
+      title: "Likely untrust",
     },
     {
-      helper: "Cas a relire: signaux mixtes ou contexte manquant.",
+      helper: "Cases to reread: mixed signals or missing context.",
       id: "verify",
       rows: preparedRows.filter(
         (row) =>
           row.status.label !== "Urgent" &&
-          row.status.label !== "Untrust probable",
+          row.status.label !== "Likely untrust",
       ),
-      title: "A verifier",
+      title: "To review",
     },
   ].filter((group) => group.rows.length > 0);
   const planSummary = preparedRows.reduce(
@@ -2961,14 +2961,14 @@ function PreparedPlan({
     signatureState.status !== "success";
   const signButtonLabel =
     signatureState.status === "sending"
-      ? "Signature en cours"
+      ? "Signature in progress"
       : signatureState.status === "success"
-        ? "Signature envoyee"
+        ? "Signature sent"
       : !wallet.isMiniappHost || !wallet.address
-      ? "Ouvrir dans Circles host"
+      ? "Open in Circles host"
       : dryRun.status !== "ready" || !dryRunMatchesPlan
-        ? "Dry-run requis avant signature"
-          : `Verifier ${dryRun.transactions.length} untrust`;
+        ? "Dry-run required before signature"
+          : `Review ${dryRun.transactions.length} untrust`;
   const currentMembersByAddress = useMemo(
     () =>
       new Map(
@@ -2990,7 +2990,7 @@ function PreparedPlan({
             ...target,
             relation: currentMember
               ? circleBucketLabel(currentMember.bucket)
-              : "Absent du cercle charge",
+              : "Absent from loaded circle",
             status: stillOutgoing ? ("still-present" as const) : ("removed" as const),
           };
         })
@@ -2998,7 +2998,7 @@ function PreparedPlan({
 
   async function buildUntrustTransactions() {
     if (confirmedRows.length === 0) {
-      throw new Error("Aucun untrust confirme pour construire le brouillon.");
+      throw new Error("No confirmed untrust to build the draft.");
     }
 
     const { Sdk } = await import("@aboutcircles/sdk");
@@ -3033,7 +3033,7 @@ function PreparedPlan({
         error:
           err instanceof Error
             ? err.message
-            : "Impossible de construire le brouillon de transaction.",
+            : "Unable to build the transaction draft.",
         status: "error",
         transactions: [],
       });
@@ -3043,7 +3043,7 @@ function PreparedPlan({
   function openSignatureReview() {
     if (!wallet.isMiniappHost || !wallet.address) {
       setSignatureState({
-        error: "Signature disponible uniquement dans l'app Circles connectee.",
+        error: "Signature is only available inside the connected Circles app.",
         hashes: [],
         status: "error",
       });
@@ -3052,7 +3052,7 @@ function PreparedPlan({
 
     if (dryRun.status !== "ready" || !dryRunMatchesPlan) {
       setSignatureState({
-        error: "Lance d'abord un dry-run a jour avant de signer.",
+        error: "Run an up-to-date dry-run before signing.",
         hashes: [],
         status: "error",
       });
@@ -3065,7 +3065,7 @@ function PreparedPlan({
   async function signConfirmedUntrusts() {
     if (!wallet.isMiniappHost || !wallet.address) {
       setSignatureState({
-        error: "Signature disponible uniquement dans l'app Circles connectee.",
+        error: "Signature is only available inside the connected Circles app.",
         hashes: [],
         status: "error",
       });
@@ -3074,7 +3074,7 @@ function PreparedPlan({
 
     if (dryRun.status !== "ready" || !dryRunMatchesPlan) {
       setSignatureState({
-        error: "Lance d'abord un dry-run a jour avant de signer.",
+        error: "Run an up-to-date dry-run before signing.",
         hashes: [],
         status: "error",
       });
@@ -3099,7 +3099,7 @@ function PreparedPlan({
         error:
           err instanceof Error
             ? err.message
-            : "La signature a ete refusee ou a echoue.",
+            : "The signature was rejected or failed.",
         hashes: [],
         status: "error",
       });
@@ -3112,7 +3112,7 @@ function PreparedPlan({
       (!dryRunMatchesPlan && signatureState.status !== "success")
     ) {
       setVerificationState({
-        error: "Dry-run a jour requis avant la relecture.",
+        error: "Up-to-date dry-run required before rechecking.",
         status: "error",
         targets: [],
       });
@@ -3128,7 +3128,7 @@ function PreparedPlan({
     const ok = await onRefreshGraph();
     if (!ok) {
       setVerificationState({
-        error: "Relecture impossible. Reessaie dans quelques secondes.",
+        error: "Unable to reread the circle. Try again in a few seconds.",
         status: "error",
         targets: dryRun.transactions,
       });
@@ -3143,13 +3143,13 @@ function PreparedPlan({
             <Trash2 className="size-4" />
           </span>
           <div>
-            <h3 className="text-sm font-semibold text-ink">Plan d&apos;untrust</h3>
+            <h3 className="text-sm font-semibold text-ink">Untrust plan</h3>
             <p className="max-w-2xl text-xs leading-relaxed text-ink/60">
               {signatureState.status === "success"
-                ? "Signature envoyee. La verification ci-dessous confirme le resultat on-chain apres relecture."
+                ? "Signature sent. The verification below confirms the on-chain result after rereading."
                 : selectedRows.length > 0
-                ? "Aucune signature n'a ete envoyee. Le plan range seulement les profils selectionnes avant validation manuelle."
-                : "Selectionne un profil Untrust dans le carousel: il apparaitra ici avant toute signature."}
+                ? "No signature has been sent. The plan only organizes selected profiles before manual validation."
+                : "Select an Untrust profile in the carousel: it will appear here before any signature."}
             </p>
           </div>
         </div>
@@ -3161,17 +3161,17 @@ function PreparedPlan({
         >
           <ClipboardCheck className="size-4" />
           {signatureState.status === "success"
-            ? "Action signee"
+            ? "Signed action"
             : planSummary.confirm > 0
             ? `Dry-run ${planSummary.confirm} untrust`
-            : "Dry-run indisponible"}
+            : "Dry-run unavailable"}
         </Button>
       </div>
 
       <div className="mt-3 grid gap-2 sm:grid-cols-3">
         <div className="rounded-lg border border-citrus/15 bg-white/55 p-3">
           <div className="text-[11px] font-semibold uppercase tracking-wide text-ink/45">
-            Pret signature
+            Ready to sign
           </div>
           <div className="mt-1 text-lg font-semibold text-citrus">
             {planSummary.confirm}
@@ -3179,7 +3179,7 @@ function PreparedPlan({
         </div>
         <div className="rounded-lg border border-amber/15 bg-white/55 p-3">
           <div className="text-[11px] font-semibold uppercase tracking-wide text-ink/45">
-            A verifier
+            To review
           </div>
           <div className="mt-1 text-lg font-semibold text-amber">
             {planSummary.later}
@@ -3187,7 +3187,7 @@ function PreparedPlan({
         </div>
         <div className="rounded-lg border border-sage/15 bg-white/55 p-3">
           <div className="text-[11px] font-semibold uppercase tracking-wide text-ink/45">
-            Garder
+            Keep
           </div>
           <div className="mt-1 text-lg font-semibold text-sage">
             {planSummary.keep}
@@ -3209,7 +3209,7 @@ function PreparedPlan({
                 <p className="text-xs text-ink/55">{group.helper}</p>
               </div>
               <Badge className="border-ink/10 bg-sand/70 text-ink/60" variant="outline">
-                {group.rows.length} profil{group.rows.length > 1 ? "s" : ""}
+                {group.rows.length} profile{group.rows.length > 1 ? "s" : ""}
               </Badge>
             </div>
 
@@ -3260,7 +3260,7 @@ function PreparedPlan({
                             Age {accountAgeLabel(signal)}
                           </span>
                           <span className="rounded-md bg-sand/70 px-2 py-1">
-                            Reseau {networkLabel(signal)}
+                            Network {networkLabel(signal)}
                           </span>
                         </div>
 
@@ -3289,9 +3289,9 @@ function PreparedPlan({
                           }}
                           className="mt-1 h-9 w-full rounded-md border border-ink/15 bg-white px-2 text-sm font-semibold text-ink outline-none transition focus-visible:border-marine/40 focus-visible:ring-3 focus-visible:ring-marine/20"
                         >
-                          <option value="confirm">Confirmer untrust</option>
-                          <option value="later">A verifier</option>
-                          <option value="keep">Garder</option>
+                          <option value="confirm">Confirm untrust</option>
+                          <option value="later">Review later</option>
+                          <option value="keep">Keep</option>
                         </select>
                         <span className="mt-1 block text-xs leading-relaxed text-ink/55">
                           {planDecisionHelper(decision)}
@@ -3305,31 +3305,32 @@ function PreparedPlan({
           </section>
         )) : (
           <div className="rounded-lg border border-dashed border-ink/15 bg-white/45 p-4 text-sm text-ink/60">
-            Aucun profil dans le plan pour l&apos;instant.
+            No profile in the plan yet.
           </div>
         )}
       </div>
 
       <div className="mt-3 rounded-lg border border-dashed border-ink/15 bg-white/45 p-3 text-xs leading-relaxed text-ink/60">
-        Le clic Untrust ajoute au plan. La prochaine etape sera une validation
-        wallet explicite profil par profil ou en lot, selon ce qu&apos;on choisit.
+        Clicking Untrust adds a profile to the plan. The next step is an
+        explicit wallet validation, profile by profile or as a batch depending
+        on what you choose.
       </div>
 
       <div className="mt-3 rounded-lg border border-marine/15 bg-white/60 p-3">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <h4 className="text-sm font-semibold text-ink">
-              Brouillon transaction
+              Transaction draft
             </h4>
             <p className="text-xs leading-relaxed text-ink/60">
-              Le dry-run encode ce qui serait envoye au wallet. Il ne signe
-              rien et ne transmet rien au host.
+              The dry-run encodes what would be sent to the wallet. It signs
+              nothing and sends nothing to the host.
             </p>
           </div>
           <Badge className="border-marine/20 bg-marine/10 text-marine" variant="outline">
             {dryRun.status === "ready"
-              ? `${dryRun.transactions.length} appel${dryRun.transactions.length > 1 ? "s" : ""}`
-              : "Aucun envoi"}
+              ? `${dryRun.transactions.length} call${dryRun.transactions.length > 1 ? "s" : ""}`
+              : "No send"}
           </Badge>
         </div>
 
@@ -3343,16 +3344,16 @@ function PreparedPlan({
         !dryRunMatchesPlan &&
         signatureState.status !== "success" ? (
           <div className="mt-3 rounded-md border border-amber/20 bg-amber/10 px-3 py-2 text-xs font-medium text-amber">
-            Le plan a change depuis le dernier dry-run. Regenere le brouillon
-            avant de signer.
+            The plan changed since the last dry-run. Regenerate the draft
+            before signing.
           </div>
         ) : null}
 
         {showDryRunSnapshot ? (
           <div className="mt-3 space-y-2">
             <div className="rounded-md bg-sand/60 px-3 py-2 text-xs text-ink/60">
-              Genere a {new Date(dryRun.generatedAt).toLocaleTimeString()}.
-              Action: `trust(target, 0)` sur le Hub Circles.
+              Generated at {new Date(dryRun.generatedAt).toLocaleTimeString()}.
+              Action: `trust(target, 0)` on the Circles Hub.
             </div>
             {dryRun.transactions.map((tx, index) => (
               <details
@@ -3364,22 +3365,22 @@ function PreparedPlan({
               </summary>
                 <div className="mt-2 grid gap-2 text-xs text-ink/60 sm:grid-cols-2">
                   <div className="rounded-md bg-sand/60 px-2 py-1.5">
-                    Cible: {shortenAddress(tx.targetAddress)} - {tx.targetType}
+                    Target: {shortenAddress(tx.targetAddress)} - {tx.targetType}
                   </div>
                   <div className="rounded-md bg-sand/60 px-2 py-1.5">
-                    Decision: Untrust confirme
+                    Decision: Confirmed untrust
                   </div>
                   <div className="rounded-md bg-sand/60 px-2 py-1.5">
-                    Analyse cleaner: {tx.targetStatus}
+                    Cleaner analysis: {tx.targetStatus}
                   </div>
                   <div className="rounded-md bg-sand/60 px-2 py-1.5">
-                    Contrat: {shortenAddress(tx.to)}
+                    Contract: {shortenAddress(tx.to)}
                   </div>
                   <div className="rounded-md bg-sand/60 px-2 py-1.5">
-                    Valeur: {tx.value}
+                    Value: {tx.value}
                   </div>
                   <div className="rounded-md bg-sand/60 px-2 py-1.5">
-                    Methode: {tx.method}
+                    Method: {tx.method}
                   </div>
                   <div className="rounded-md bg-sand/60 px-2 py-1.5">
                     Expiry: 0
@@ -3393,7 +3394,7 @@ function PreparedPlan({
           </div>
         ) : (
           <div className="mt-3 rounded-lg border border-dashed border-ink/15 bg-sand/45 p-3 text-xs text-ink/55">
-            Clique sur Dry-run quand les profils a untrust sont confirmes.
+            Click Dry-run once the profiles to untrust are confirmed.
           </div>
         )}
 
@@ -3402,8 +3403,8 @@ function PreparedPlan({
             <div>
               <h4 className="text-sm font-semibold text-ink">Signature wallet</h4>
               <p className="max-w-2xl text-xs leading-relaxed text-ink/60">
-                Active seulement dans l&apos;app Circles connectee. Un ecran de
-                verification liste les profils juste avant l&apos;envoi au host.
+                Active only inside the connected Circles app. A review screen
+                lists the profiles right before sending to the host.
               </p>
             </div>
             <Button
@@ -3428,7 +3429,7 @@ function PreparedPlan({
 
           {signatureState.status === "success" ? (
             <div className="mt-3 rounded-md border border-sage/20 bg-sage/10 px-3 py-2 text-xs text-sage">
-              <div className="font-semibold">Signature envoyee.</div>
+              <div className="font-semibold">Signature sent.</div>
               <div className="mt-1 space-y-1 break-all font-mono">
                 {signatureState.hashes.map((hash) => (
                   <div key={hash}>{hash}</div>
@@ -3441,11 +3442,11 @@ function PreparedPlan({
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <h4 className="text-sm font-semibold text-ink">
-                  Verification apres signature
+                  Verification after signature
                 </h4>
                 <p className="max-w-2xl text-xs leading-relaxed text-ink/60">
-                  Relit le cercle et compare les profils signes avec les trusts
-                  sortants actuels.
+                  Rereads the circle and compares signed profiles with current
+                  outgoing trusts.
                 </p>
               </div>
               <Button
@@ -3464,13 +3465,13 @@ function PreparedPlan({
                 ) : (
                   <Search className="size-4" />
                 )}
-                Relire le cercle
+                Reread circle
               </Button>
             </div>
 
             {signatureState.status !== "success" ? (
               <div className="mt-3 rounded-lg border border-dashed border-ink/15 bg-sand/45 p-3 text-xs text-ink/55">
-                Disponible apres une signature envoyee.
+                Available after a signature is sent.
               </div>
             ) : null}
 
@@ -3483,7 +3484,7 @@ function PreparedPlan({
             {verificationState.status === "checking" &&
             verificationResults.length === 0 ? (
               <div className="mt-3 rounded-md border border-marine/20 bg-marine/10 px-3 py-2 text-xs font-medium text-marine">
-                Relecture du cercle en cours...
+                Rereading circle...
               </div>
             ) : null}
 
@@ -3491,8 +3492,8 @@ function PreparedPlan({
               <div className="mt-3 grid gap-2">
                 {verificationResults.every((result) => result.status === "removed") ? (
                   <div className="rounded-md border border-sage/20 bg-sage/10 px-3 py-2 text-xs font-medium text-sage">
-                    Verification reussie: tous les profils signes sont retires
-                    du trust sortant charge.
+                    Verification successful: every signed profile has been
+                    removed from the loaded outgoing trust list.
                   </div>
                 ) : null}
                 {verificationResults.map((result) => (
@@ -3516,7 +3517,7 @@ function PreparedPlan({
                       }
                       variant="outline"
                     >
-                      {result.status === "removed" ? "Retire" : "Encore present"}
+                      {result.status === "removed" ? "Removed" : "Still present"}
                     </Badge>
                   </div>
                 ))}
@@ -3535,11 +3536,11 @@ function PreparedPlan({
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                     <div>
                       <h3 className="text-base font-semibold text-ink">
-                        Derniere verification
+                        Final review
                       </h3>
                       <p className="mt-1 text-xs leading-relaxed text-ink/60">
-                        Cette etape enverra une vraie demande de signature au
-                        wallet Circles. Chaque ligne met le trust a zero.
+                        This step sends a real signature request to the Circles
+                        wallet. Each line sets the trust to zero.
                       </p>
                     </div>
                     <Badge className="border-citrus/25 bg-citrus/10 text-citrus" variant="outline">
@@ -3550,9 +3551,9 @@ function PreparedPlan({
 
                 <div className="max-h-[52vh] overflow-auto p-4">
                   <div className="rounded-lg border border-citrus/20 bg-citrus/10 p-3 text-xs leading-relaxed text-citrus">
-                    Apres signature, ces profils ne seront plus trustes par ton
-                    wallet. Tu pourras relire le cercle juste apres pour verifier
-                    le resultat.
+                    After signature, these profiles will no longer be trusted by
+                    your wallet. You can reread the circle right after to verify
+                    the result.
                   </div>
 
                   <div className="mt-3 grid gap-2">
@@ -3571,21 +3572,21 @@ function PreparedPlan({
                             </div>
                           </div>
                           <Badge className="border-citrus/25 bg-citrus/10 text-citrus" variant="outline">
-                            Untrust confirme
+                            Confirmed untrust
                           </Badge>
                         </div>
                         <div className="mt-2 grid gap-2 text-xs text-ink/60 sm:grid-cols-2">
                           <div className="rounded-md bg-white/70 px-2 py-1.5">
-                            Methode: {tx.method}
+                            Method: {tx.method}
                           </div>
                           <div className="rounded-md bg-white/70 px-2 py-1.5">
                             Expiry: 0
                           </div>
                           <div className="rounded-md bg-white/70 px-2 py-1.5">
-                            Analyse cleaner: {tx.targetStatus}
+                            Cleaner analysis: {tx.targetStatus}
                           </div>
                           <div className="rounded-md bg-white/70 px-2 py-1.5">
-                            Valeur: {tx.value}
+                            Value: {tx.value}
                           </div>
                         </div>
                       </div>
@@ -3599,14 +3600,14 @@ function PreparedPlan({
                     variant="outline"
                     onClick={() => setSignatureReviewOpen(false)}
                   >
-                    Annuler
+                    Cancel
                   </Button>
                   <Button
                     type="button"
                     onClick={() => void signConfirmedUntrusts()}
                   >
                     <ClipboardCheck className="size-4" />
-                    Signer maintenant
+                    Sign now
                   </Button>
                 </div>
               </div>
@@ -3646,7 +3647,7 @@ function ReviewCarousel({
       const status = cleanerStatus(member, trustSignals[member.address], profiles[member.address]);
       if (status.label === "Urgent") {
         urgent += 1;
-      } else if (status.label === "Untrust probable") {
+      } else if (status.label === "Likely untrust") {
         probable += 1;
       } else {
         toVerify += 1;
@@ -3750,10 +3751,10 @@ function ReviewCarousel({
         <div>
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="text-sm font-semibold text-ink">
-              {members.length} trusts sortants a auditer
+              {members.length} outgoing trusts to audit
             </h3>
             <Badge className="border-citrus/25 bg-white/70 text-citrus" variant="outline">
-              aide a la decision
+              decision aid
             </Badge>
           </div>
           <div className="mt-2 flex flex-wrap gap-1.5">
@@ -3764,24 +3765,23 @@ function ReviewCarousel({
             ) : null}
             {reviewStats.probable > 0 ? (
               <Badge className="border-amber/25 bg-amber/10 text-amber" variant="outline">
-                {reviewStats.probable} untrust probable
+                {reviewStats.probable} likely untrust
               </Badge>
             ) : null}
             {reviewStats.toVerify > 0 ? (
               <Badge className="border-marine/20 bg-marine/10 text-marine" variant="outline">
-                {reviewStats.toVerify} a verifier
+                {reviewStats.toVerify} to review
               </Badge>
             ) : null}
           </div>
           <p className="mt-1 max-w-2xl text-xs leading-relaxed text-ink/60">
-            Liste complete des trusts sortants seuls, triee par risque. Aucun
-            top 10: les urgences remontent d&apos;abord, sans selection
-            automatique.
+            Complete list of outgoing-only trusts, sorted by risk. No top 10:
+            urgent cases rise first, without automatic selection.
           </p>
         </div>
         {canMouseScroll ? (
           <div className="rounded-md bg-white/70 px-2.5 py-1.5 text-xs font-semibold text-ink/60">
-            Survole pour defiler
+            Hover to scroll
           </div>
         ) : null}
       </div>
@@ -3867,7 +3867,7 @@ function ReviewCarousel({
                     onClick={() => onSelect(member)}
                   >
                     <Search className="size-3.5" />
-                    Voir
+                    View
                   </Button>
                   <Button
                     type="button"
@@ -3876,7 +3876,7 @@ function ReviewCarousel({
                     onClick={() => onToggleCleanup(cleanupRowId(member))}
                   >
                     <ClipboardCheck className="size-3.5" />
-                    {selected ? "Retirer du plan" : "Untrust"}
+                    {selected ? "Remove from plan" : "Untrust"}
                   </Button>
                 </div>
               </article>
@@ -3987,7 +3987,7 @@ function TrustCircleManager({
     sourceProfileName ||
     (normalizedSourceAddress === DEFAULT_LAUNCH_ADDRESS.toLowerCase()
       ? "@cryptosnf"
-      : "adresse lue");
+      : "loaded address");
   const [sourceToMemberPathfinder, setSourceToMemberPathfinder] = useState<PathfinderState>({
     status: "idle",
   });
@@ -4150,7 +4150,7 @@ function TrustCircleManager({
           ? { status: "ready", preview: sourceToMember.value }
           : {
               status: "error",
-              error: "Chemin de circulation indisponible pour ce sens.",
+              error: "Circulation path unavailable for this direction.",
             },
       );
       setMemberToSourcePathfinder(
@@ -4158,7 +4158,7 @@ function TrustCircleManager({
           ? { status: "ready", preview: memberToSource.value }
           : {
               status: "error",
-              error: "Chemin de circulation indisponible pour ce sens.",
+              error: "Circulation path unavailable for this direction.",
             },
       );
     });
@@ -4263,9 +4263,9 @@ function TrustCircleManager({
       return;
     }
     setCircleSearchNotice({
-      title: `${profile.name} n'est pas dans ce cercle`,
+      title: `${profile.name} is not in this circle`,
       description:
-        "Ce profil existe, mais il n'apparait pas dans les relations chargees. Tu peux ouvrir son propre cercle pour explorer autour de lui.",
+        "This profile exists, but it does not appear in the loaded relations. You can open its own circle to explore around it.",
     });
   }
 
@@ -4310,16 +4310,16 @@ function TrustCircleManager({
       }
 
       setCircleSearchNotice({
-        title: "Pas dans ce cercle",
+        title: "Not in this circle",
         description:
           matches.length > 0
-            ? `${matches.length} profil(s) trouve(s) pour "${term}", mais aucun n'apparait dans le trust graph charge.`
-            : `Aucun profil Circles trouve pour "${term}".`,
+            ? `${matches.length} profile(s) found for "${term}", but none appear in the loaded trust graph.`
+            : `No Circles profile found for "${term}".`,
       });
     } catch {
       setCircleSearchNotice({
-        title: "Recherche impossible",
-        description: "La recherche profil n'a pas repondu. Reessaie dans un instant.",
+        title: "Search unavailable",
+        description: "Profile search did not respond. Try again in a moment.",
       });
     } finally {
       setCircleSearchLoading(false);
@@ -4332,45 +4332,45 @@ function TrustCircleManager({
         <div>
           <div className="flex flex-wrap items-center gap-2">
             <h2 className="text-xl font-semibold tracking-tight text-ink">
-              Nettoyage du cercle
+              Circle cleaner
             </h2>
             <Badge className="border-citrus/25 bg-citrus/10 text-citrus" variant="outline">
               Cleaner
             </Badge>
           </div>
           <p className="mt-1 max-w-2xl text-sm text-ink/65">
-            Priorite aux trusts sortants seuls: ce sont les engagements que tu
-            peux nettoyer sans casser une relation mutuelle directe.
+            Focus first on outgoing-only trusts: these are commitments you can
+            clean without breaking a direct mutual relation.
           </p>
         </div>
         <div className="grid grid-cols-3 gap-2 rounded-lg border border-ink/10 bg-white/45 p-2 text-center">
           <div className="px-2">
             <div className="text-lg font-semibold text-ink">{keepMembers.length}</div>
-            <div className="text-[11px] uppercase tracking-wide text-ink/45">Mutuels</div>
+            <div className="text-[11px] uppercase tracking-wide text-ink/45">Mutual</div>
           </div>
           <div className="px-2">
             <div className="text-lg font-semibold text-citrus">{reviewMembers.length}</div>
-            <div className="text-[11px] uppercase tracking-wide text-ink/45">Sortants</div>
+            <div className="text-[11px] uppercase tracking-wide text-ink/45">Outgoing</div>
           </div>
           <div className="px-2">
             <div className="text-lg font-semibold text-marine">{incomingMembers.length}</div>
-            <div className="text-[11px] uppercase tracking-wide text-ink/45">Entrants</div>
+            <div className="text-[11px] uppercase tracking-wide text-ink/45">Incoming</div>
           </div>
         </div>
       </div>
 
       <div className="mt-4 grid gap-2 rounded-lg border border-marine/15 bg-marine/5 p-3 text-sm text-ink/70 lg:grid-cols-3">
         <div>
-          <span className="font-semibold text-ink">Regle de trust:</span>{" "}
-          trust une personne = accepter ses CRC dans ton economie.
+          <span className="font-semibold text-ink">Trust rule:</span>{" "}
+          trusting someone means accepting their CRC in your economy.
         </div>
         <div>
-          <span className="font-semibold text-ink">Objectif:</span>{" "}
-          auditer tes engagements sortants, pas juger les personnes.
+          <span className="font-semibold text-ink">Goal:</span>{" "}
+          audit your outgoing commitments, not judge people.
         </div>
         <div>
-          <span className="font-semibold text-ink">Priorite:</span>{" "}
-          verifier les trusts sortants seuls avant toute action.
+          <span className="font-semibold text-ink">Priority:</span>{" "}
+          review outgoing-only trusts before any action.
         </div>
       </div>
 
@@ -4418,7 +4418,7 @@ function TrustCircleManager({
                 if (event.key === "Escape") setCircleSearchOpen(false);
               }}
               aria-label="Search inside current circle"
-              placeholder="Chercher un pseudo ou une adresse dans ce cercle"
+              placeholder="Search a name or address in this circle"
               className="h-10 w-full min-w-0 rounded-lg border border-ink/15 bg-white/80 px-3 pl-9 text-sm text-ink shadow-sm outline-none transition placeholder:text-ink/35 focus-visible:border-marine/40 focus-visible:ring-3 focus-visible:ring-marine/20"
             />
           </div>
@@ -4428,7 +4428,7 @@ function TrustCircleManager({
             ) : (
               <Search className="size-4" />
             )}
-            Situer
+            Locate
           </Button>
         </form>
         {circleSearchOpen && trimmedCircleSearch.length >= 2 ? (
@@ -4462,7 +4462,7 @@ function TrustCircleManager({
                             }
                             variant="outline"
                           >
-                            {member ? circleBucketLabel(member.bucket) : "Hors cercle"}
+                            {member ? circleBucketLabel(member.bucket) : "Outside circle"}
                           </Badge>
                           {member ? (
                             <TrustSignalBadge
@@ -4481,7 +4481,7 @@ function TrustCircleManager({
                         onClick={() => previewCircleProfile(profile)}
                       >
                         <Search className="size-3.5" />
-                        Situer
+                        Locate
                       </Button>
                       <Button
                         type="button"
@@ -4491,7 +4491,7 @@ function TrustCircleManager({
                         onClick={() => onLoadProfile(profile)}
                       >
                         <Eye className="size-3.5" />
-                        Voir son cercle
+                        View their circle
                       </Button>
                       {member?.bucket === "review" ? (
                         <Button
@@ -4506,7 +4506,7 @@ function TrustCircleManager({
                           onClick={() => onToggleCleanup(cleanupRowId(member))}
                         >
                           <ClipboardCheck className="size-3.5" />
-                          {selectedForCleanup ? "Retirer du plan" : "Untrust"}
+                          {selectedForCleanup ? "Remove from plan" : "Untrust"}
                         </Button>
                       ) : null}
                     </div>
@@ -4516,8 +4516,8 @@ function TrustCircleManager({
             ) : (
               <div className="rounded-lg border border-dashed border-ink/15 bg-white/35 p-3 text-sm text-ink/55 md:col-span-2 xl:col-span-3">
                 {circleSearchLoading
-                  ? "Recherche de profils..."
-                  : "Aucun profil trouve pour cette recherche."}
+                  ? "Searching profiles..."
+                  : "No profile found for this search."}
               </div>
             )}
           </div>
@@ -4558,36 +4558,36 @@ function TrustCircleManager({
 
       <div className="mt-4 grid gap-3 md:grid-cols-3">
         <CircleColumn
-          empty="Aucun trust sortant sans retour."
+          empty="No outgoing trust without return."
           members={reviewMembers}
           onSelect={onSelectMember}
           onToggleCleanup={onToggleCleanup}
           profiles={profiles}
           selectedCleanupIds={selectedCleanupIds}
           selectedMemberId={selectedMemberId}
-          title="Trust sortant seul"
+          title="Outgoing-only trust"
           trustSignals={trustSignals}
         />
         <CircleColumn
-          empty="Aucun trust mutuel detecte."
+          empty="No mutual trust detected."
           members={keepMembers}
           onSelect={onSelectMember}
           onToggleCleanup={onToggleCleanup}
           profiles={profiles}
           selectedCleanupIds={selectedCleanupIds}
           selectedMemberId={selectedMemberId}
-          title="Mutuels"
+          title="Mutual"
           trustSignals={trustSignals}
         />
         <CircleColumn
-          empty="Aucun trust entrant sans retour."
+          empty="No incoming trust without return."
           members={incomingMembers}
           onSelect={onSelectMember}
           onToggleCleanup={onToggleCleanup}
           profiles={profiles}
           selectedCleanupIds={selectedCleanupIds}
           selectedMemberId={selectedMemberId}
-          title="Trust entrant seul"
+          title="Incoming-only trust"
           trustSignals={trustSignals}
         />
       </div>
@@ -4600,7 +4600,7 @@ function TrustCircleManager({
           disabled={reviewMembers.length === 0}
           onClick={onSelectAll}
         >
-          Selectionner tous les untrust sortants seuls
+          Select all outgoing-only untrusts
         </Button>
         <Button
           type="button"
@@ -4609,7 +4609,7 @@ function TrustCircleManager({
           disabled={selectedRows.length === 0}
           onClick={onClear}
         >
-          Vider la selection
+          Clear selection
         </Button>
       </div>
 
@@ -5105,7 +5105,7 @@ export function TrustGraphReader() {
                   {profileSearchLoading ? (
                     <div className="flex items-center gap-2 px-3 py-3 text-sm text-ink/60">
                       <RefreshCw className="size-4 animate-spin" />
-                      Recherche profils...
+                      Searching profiles...
                     </div>
                   ) : profileSearchResults.length ? (
                     <div className="max-h-72 overflow-auto p-1.5">
@@ -5133,7 +5133,7 @@ export function TrustGraphReader() {
                     </div>
                   ) : (
                     <div className="px-3 py-3 text-sm text-ink/60">
-                      Aucun profil trouve.
+                      No profile found.
                     </div>
                   )}
                 </div>
@@ -5235,15 +5235,15 @@ export function TrustGraphReader() {
         />
         <CountTile
           icon={<RefreshCw className="size-4" />}
-          info="Relations brutes renvoyees par le SDK Circles sur la premiere page de diagnostic. Ca sert surtout a verifier la lecture, pas a decider seul du nettoyage."
-          label="Relations brutes"
+          info="Raw relations returned by the Circles SDK on the first diagnostic page. This mainly verifies the read, not the cleaning decision on its own."
+          label="Raw relations"
           tone="amber"
           value={result?.counts.rawRelations ?? "-"}
         />
         <CountTile
           icon={<ShieldCheck className="size-4" />}
-          info="Heure de la derniere recuperation des donnees depuis Circles pour l'adresse affichee."
-          label="Derniere lecture"
+          info="Time of the latest data fetch from Circles for the displayed address."
+          label="Last fetch"
           tone="ink"
           value={lastFetch}
         />
