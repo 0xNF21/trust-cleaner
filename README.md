@@ -6,7 +6,7 @@ The goal is simple: keep a high-quality Circles trust network by making outgoing
 
 - Production app: https://trust-cleaner.vercel.app
 - GitHub repo: https://github.com/0xNF21/trust-cleaner
-- Circles Playground: https://circles.gnosis.io/playground?url=https%3A%2F%2Ftrust-cleaner.vercel.app
+- Circles Playground: [open Trust Cleaner in Playground](https://circles.gnosis.io/playground?url=https%3A%2F%2Ftrust-cleaner.vercel.app)
 
 ## What It Does
 
@@ -38,11 +38,9 @@ This is the full mode.
 
 Open Trust Cleaner inside the Circles host or Circles Playground. The host injects the wallet through `@aboutcircles/miniapp-sdk`, and Trust Cleaner can send the reviewed untrust transactions to the connected wallet.
 
-Use the Playground with:
+Use the Playground with the link above.
 
-```text
-https://circles.gnosis.io/playground?url=https%3A%2F%2Ftrust-cleaner.vercel.app
-```
+The deploy URL is passed as the `url` parameter so the Playground knows which mini-app to load.
 
 ### Standalone Web Mode
 
