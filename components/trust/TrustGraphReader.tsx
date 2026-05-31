@@ -195,6 +195,7 @@ type ActivityDraft = Omit<ActivityEvent, "id" | "timestamp"> & {
 type TrustCleanerView = "cleaner" | "history";
 
 type CircleBucket = "keep" | "review" | "incoming";
+type RelationExplorerTab = "review" | "mutual" | "incoming";
 
 type CircleMember = RelationRow & {
   bucket: CircleBucket;
@@ -1587,21 +1588,23 @@ function CleanupPlanPanel({
 }
 
 function CirclePersonCard({
+  compact = false,
+  cleanupSelected,
   member,
   onSelect,
   onToggleCleanup,
   profile,
   selected,
   signal,
-  cleanupSelected,
 }: {
+  compact?: boolean;
+  cleanupSelected: boolean;
   member: CircleMember;
   onSelect: () => void;
   onToggleCleanup: () => void;
   profile?: CirclesProfile | null;
   selected: boolean;
   signal?: TrustSignal | null;
-  cleanupSelected: boolean;
 }) {
   const name = profile?.name?.trim() || shortenAddress(member.address);
   const isReview = member.bucket === "review";
@@ -1611,7 +1614,9 @@ function CirclePersonCard({
   return (
     <div
       className={
-        "rounded-lg border bg-white/60 p-3 transition " +
+        `rounded-lg border bg-white/60 transition ${
+          compact ? "p-2.5" : "p-3"
+        } ` +
         (selected ? "border-marine/40 shadow-sm" : "border-ink/10")
       }
     >
@@ -1644,7 +1649,11 @@ function CirclePersonCard({
               {status.label}
             </Badge>
           </div>
-          <p className="mt-2 line-clamp-2 text-xs leading-relaxed text-ink/65">
+          <p
+            className={`text-xs leading-relaxed text-ink/65 ${
+              compact ? "mt-1 line-clamp-1" : "mt-2 line-clamp-2"
+            }`}
+          >
             {relationSentence(member, name)}
           </p>
           <div className="mt-2 flex flex-wrap gap-1.5">
@@ -1657,13 +1666,13 @@ function CirclePersonCard({
             <Badge className={trustBandTone(trustBand(signal))} variant="outline">
               Score {scoreLabel(signal)}
             </Badge>
-            {isReview ? (
+            {isReview && !compact ? (
               <Badge className="border-ink/10 bg-sand/70 text-ink/60" variant="outline">
                 Backer {backerLabel(signal)}
               </Badge>
             ) : null}
           </div>
-          {isReview ? (
+          {isReview && !compact ? (
             <div className="mt-2 grid grid-cols-2 gap-1.5 text-[11px] text-ink/55">
               <span className="truncate rounded-md bg-sand/60 px-2 py-1">
                 Age {accountAgeLabel(signal)}
@@ -1679,56 +1688,173 @@ function CirclePersonCard({
   );
 }
 
-function CircleColumn({
-  empty,
-  members,
+function CircleRelationsExplorer({
+  activeTab,
+  groups,
   onSelect,
+  onTabChange,
   onToggleCleanup,
   profiles,
   selectedCleanupIds,
   selectedMemberId,
-  title,
   trustSignals,
 }: {
-  empty: string;
-  members: CircleMember[];
+  activeTab: RelationExplorerTab;
+  groups: Array<{
+    empty: string;
+    helper: string;
+    id: RelationExplorerTab;
+    members: CircleMember[];
+    title: string;
+  }>;
   onSelect: (member: CircleMember) => void;
+  onTabChange: (tab: RelationExplorerTab) => void;
   onToggleCleanup: (id: string) => void;
   profiles: Record<string, CirclesProfile>;
   selectedCleanupIds: Set<string>;
   selectedMemberId: string | null;
-  title: string;
   trustSignals: Record<string, TrustSignal>;
 }) {
+  const [filterTerm, setFilterTerm] = useState("");
+  const [visibleCount, setVisibleCount] = useState(12);
+  const activeGroup = groups.find((group) => group.id === activeTab) ?? groups[0];
+  const normalizedFilter = filterTerm.trim().toLowerCase();
+  const filteredMembers = normalizedFilter
+    ? activeGroup.members.filter((member) => {
+        const profile = profiles[member.address];
+        const signal = trustSignals[member.address];
+        const status = cleanerStatus(member, signal, profile);
+        const haystack = [
+          member.address,
+          profile?.name,
+          profileTypeLabel(profile),
+          status.label,
+          scoreLabel(signal),
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+        return haystack.includes(normalizedFilter);
+      })
+    : activeGroup.members;
+  const visibleMembers = filteredMembers.slice(0, visibleCount);
+
   return (
-    <div className="rounded-lg border border-ink/10 bg-white/35 p-3">
-      <div className="flex items-center justify-between gap-3">
-        <h3 className="text-sm font-semibold text-ink">{title}</h3>
-        <Badge className="border-ink/10 bg-sand/70 text-ink/65" variant="outline">
-          {members.length}
-        </Badge>
+    <section className="mt-4 rounded-lg border border-ink/10 bg-white/35 p-3">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="text-sm font-semibold text-ink">
+              Relation explorer
+            </h3>
+            <Badge className="border-ink/10 bg-sand/70 text-ink/60" variant="outline">
+              {activeGroup.members.length} {activeGroup.title.toLowerCase()}
+            </Badge>
+          </div>
+          <p className="mt-1 max-w-2xl text-xs leading-relaxed text-ink/60">
+            {activeGroup.helper}
+          </p>
+        </div>
+
+        <div className="flex flex-wrap gap-1 rounded-lg border border-ink/10 bg-sand/60 p-1">
+          {groups.map((group) => {
+            const active = group.id === activeTab;
+            return (
+              <button
+                key={group.id}
+                type="button"
+                aria-pressed={active}
+                className={
+                  "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-semibold transition " +
+                  (active
+                    ? "bg-white text-ink shadow-sm"
+                    : "text-ink/55 hover:bg-white/55 hover:text-ink")
+                }
+                onClick={() => {
+                  onTabChange(group.id);
+                  setVisibleCount(12);
+                }}
+              >
+                {group.title}
+                <span className="rounded-full bg-ink/10 px-1.5 py-0.5 text-[10px] text-ink/55">
+                  {group.members.length}
+                </span>
+              </button>
+            );
+          })}
+        </div>
       </div>
-      <div className="mt-3 space-y-2">
-        {members.length === 0 ? (
+
+      <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="relative min-w-0 flex-1">
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-ink/35" />
+          <input
+            value={filterTerm}
+            onChange={(event) => {
+              setFilterTerm(event.target.value);
+              setVisibleCount(12);
+            }}
+            aria-label={`Filter ${activeGroup.title}`}
+            placeholder={`Filter ${activeGroup.title.toLowerCase()} by name, address or signal`}
+            className="h-10 w-full min-w-0 rounded-lg border border-ink/15 bg-white/75 px-3 pl-9 text-sm text-ink shadow-sm outline-none transition placeholder:text-ink/35 focus-visible:border-marine/40 focus-visible:ring-3 focus-visible:ring-marine/20"
+          />
+        </div>
+        {filterTerm ? (
+          <Button
+            type="button"
+            variant="outline"
+            className="border-ink/15 bg-white/70 hover:border-marine/30 hover:bg-white"
+            onClick={() => {
+              setFilterTerm("");
+              setVisibleCount(12);
+            }}
+          >
+            Clear filter
+          </Button>
+        ) : null}
+      </div>
+
+      <div className="mt-3 max-h-[560px] overflow-y-auto pr-1">
+        {activeGroup.members.length === 0 ? (
           <div className="rounded-lg border border-dashed border-ink/15 bg-white/35 p-3 text-sm text-ink/55">
-            {empty}
+            {activeGroup.empty}
+          </div>
+        ) : filteredMembers.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-ink/15 bg-white/35 p-3 text-sm text-ink/55">
+            No profile matches this filter.
           </div>
         ) : (
-          members.map((member) => (
-            <CirclePersonCard
-              key={circleMemberId(member)}
-              cleanupSelected={selectedCleanupIds.has(cleanupRowId(member))}
-              member={member}
-              onSelect={() => onSelect(member)}
-              onToggleCleanup={() => onToggleCleanup(cleanupRowId(member))}
-              profile={profiles[member.address]}
-              selected={selectedMemberId === circleMemberId(member)}
-              signal={trustSignals[member.address]}
-            />
-          ))
+          <div className="grid gap-2 xl:grid-cols-2">
+            {visibleMembers.map((member) => (
+              <CirclePersonCard
+                key={circleMemberId(member)}
+                cleanupSelected={selectedCleanupIds.has(cleanupRowId(member))}
+                compact
+                member={member}
+                onSelect={() => onSelect(member)}
+                onToggleCleanup={() => onToggleCleanup(cleanupRowId(member))}
+                profile={profiles[member.address]}
+                selected={selectedMemberId === circleMemberId(member)}
+                signal={trustSignals[member.address]}
+              />
+            ))}
+          </div>
         )}
       </div>
-    </div>
+
+      {filteredMembers.length > visibleMembers.length ? (
+        <div className="mt-3 flex justify-center">
+          <Button
+            type="button"
+            variant="outline"
+            className="border-ink/15 bg-white/70 hover:border-marine/30 hover:bg-white"
+            onClick={() => setVisibleCount((count) => count + 12)}
+          >
+            Show 12 more
+          </Button>
+        </div>
+      ) : null}
+    </section>
   );
 }
 
@@ -4384,6 +4510,50 @@ function TrustCircleManager({
         ),
     [keepMembers, profiles, trustSignals],
   );
+  const defaultRelationExplorerTab: RelationExplorerTab = reviewMembers.length
+    ? "review"
+    : keepMembers.length
+      ? "mutual"
+      : incomingMembers.length
+        ? "incoming"
+        : "review";
+  const [relationExplorerSelection, setRelationExplorerSelection] = useState<{
+    sourceAddress: string | null;
+    tab: RelationExplorerTab;
+  } | null>(null);
+  const relationExplorerTab =
+    relationExplorerSelection?.sourceAddress === sourceAddress
+      ? relationExplorerSelection.tab
+      : defaultRelationExplorerTab;
+  const relationExplorerGroups = useMemo(
+    () => [
+      {
+        empty: "No outgoing-only trust to review.",
+        helper:
+          "Outgoing-only trusts are the only profiles that can enter the untrust plan.",
+        id: "review" as const,
+        members: reviewMembers,
+        title: "Untrust",
+      },
+      {
+        empty: "No mutual trust detected.",
+        helper:
+          "Mutual relations are kept by default. Profiles marked Watch have weak signals to inspect.",
+        id: "mutual" as const,
+        members: keepMembers,
+        title: "Mutual",
+      },
+      {
+        empty: "No incoming trust without return.",
+        helper:
+          "Incoming-only profiles trust you, but you do not accept their CRC.",
+        id: "incoming" as const,
+        members: incomingMembers,
+        title: "Incoming",
+      },
+    ],
+    [incomingMembers, keepMembers, reviewMembers],
+  );
   const normalizedSourceAddress = sourceAddress?.toLowerCase() ?? "";
   const sourceProfileName =
     normalizedSourceAddress ? profiles[normalizedSourceAddress]?.name?.trim() : "";
@@ -5048,41 +5218,19 @@ function TrustCircleManager({
         ) : null}
       </div>
 
-      <div className="mt-4 grid gap-3 md:grid-cols-3">
-        <CircleColumn
-          empty="No outgoing-only trust to review."
-          members={reviewMembers}
-          onSelect={onSelectMember}
-          onToggleCleanup={onToggleCleanup}
-          profiles={profiles}
-          selectedCleanupIds={selectedCleanupIds}
-          selectedMemberId={selectedMemberId}
-          title="Outgoing-only trust"
-          trustSignals={trustSignals}
-        />
-        <CircleColumn
-          empty="No mutual trust detected."
-          members={keepMembers}
-          onSelect={onSelectMember}
-          onToggleCleanup={onToggleCleanup}
-          profiles={profiles}
-          selectedCleanupIds={selectedCleanupIds}
-          selectedMemberId={selectedMemberId}
-          title="Mutual"
-          trustSignals={trustSignals}
-        />
-        <CircleColumn
-          empty="No incoming trust without return."
-          members={incomingMembers}
-          onSelect={onSelectMember}
-          onToggleCleanup={onToggleCleanup}
-          profiles={profiles}
-          selectedCleanupIds={selectedCleanupIds}
-          selectedMemberId={selectedMemberId}
-          title="Incoming-only trust"
-          trustSignals={trustSignals}
-        />
-      </div>
+      <CircleRelationsExplorer
+        activeTab={relationExplorerTab}
+        groups={relationExplorerGroups}
+        onSelect={onSelectMember}
+        onTabChange={(tab) =>
+          setRelationExplorerSelection({ sourceAddress, tab })
+        }
+        onToggleCleanup={onToggleCleanup}
+        profiles={profiles}
+        selectedCleanupIds={selectedCleanupIds}
+        selectedMemberId={selectedMemberId}
+        trustSignals={trustSignals}
+      />
 
       {reviewMembers.length > 0 ? (
         <div className="mt-4 flex flex-wrap gap-2">
