@@ -518,6 +518,46 @@ function networkLabel(signal?: TrustSignal | null) {
   return `${signal.mutualCount} mutual / ${signal.inDegree} in / ${signal.outDegree} out`;
 }
 
+function mutualWatchReasons(
+  signal?: TrustSignal | null,
+  profile?: CirclesProfile | null,
+) {
+  if (!signal) return [];
+
+  const band = trustBand(signal);
+  const identifiable = Boolean(profile?.name?.trim() || profile?.imageUrl);
+  return [
+    band === "low" ? "low trust score" : null,
+    band === "unknown" ? "missing trust score" : null,
+    signal?.backerStatus === "none" ? "not a direct backer" : null,
+    signal?.backerStatus === "unknown" ? "unknown backer status" : null,
+    signal && signal.ageDays > 0 && signal.ageDays < 30 ? "recent account" : null,
+    signal && signal.inDegree === 0 && signal.outDegree === 0 ? "empty network" : null,
+    !identifiable ? "low-identifiability profile" : null,
+  ].filter(Boolean) as string[];
+}
+
+function mutualWatchScore(
+  signal?: TrustSignal | null,
+  profile?: CirclesProfile | null,
+) {
+  if (!signal) return 0;
+
+  const band = trustBand(signal);
+  const identifiable = Boolean(profile?.name?.trim() || profile?.imageUrl);
+  let score = 0;
+
+  if (band === "low") score += 35;
+  if (band === "unknown") score += 25;
+  if (signal.backerStatus === "none") score += 16;
+  if (signal.backerStatus === "unknown") score += 8;
+  if (signal.ageDays > 0 && signal.ageDays < 30) score += 14;
+  if (signal.inDegree === 0 && signal.outDegree === 0) score += 12;
+
+  if (!identifiable) score += 8;
+  return Math.max(0, score);
+}
+
 function cleanerStatus(
   member: CircleMember,
   signal?: TrustSignal | null,
@@ -528,6 +568,17 @@ function cleanerStatus(
   const accountType = profileTypeLabel(profile);
 
   if (member.bucket === "keep") {
+    const watchReasons = mutualWatchReasons(signal, profile);
+    if (watchReasons.length > 0) {
+      return {
+        label: "Watch",
+        reasons: ["Direct mutual trust", ...watchReasons],
+        summary:
+          "Mutual relation with weak signals. Review the context, but it is not added to the untrust plan automatically.",
+        tone: "amber" as const,
+      };
+    }
+
     return {
       label: "Keep",
       reasons: ["Direct mutual trust", `Type: ${accountType}`, networkLabel(signal)],
@@ -690,6 +741,7 @@ function buildTrustDecision(
   member: CircleMember,
   signal: TrustSignal | null | undefined,
   name: string,
+  profile?: CirclesProfile | null,
 ) {
   const band = trustBand(signal);
   const score = scoreLabel(signal);
@@ -697,6 +749,22 @@ function buildTrustDecision(
   const network = signal ? `${signal.inDegree} in / ${signal.outDegree} out` : "network loading";
 
   if (member.bucket === "keep") {
+    const watchReasons = mutualWatchReasons(signal, profile);
+    if (watchReasons.length > 0) {
+      return {
+        action: "Review relationship before keeping long-term.",
+        factors: [
+          "Direct bidirectional relation",
+          ...watchReasons,
+          `Network: ${network}`,
+        ],
+        label: "Watch",
+        summary:
+          "Mutual trust remains safer than one-way trust, but weak signals make it worth checking.",
+        tone: "amber" as const,
+      };
+    }
+
     return {
       action: "No untrust recommended.",
       factors: [
@@ -2827,7 +2895,7 @@ function MemberDetailPanel({
 
   const name = profile?.name?.trim() || shortenAddress(member.address);
   const isReview = member.bucket === "review";
-  const decision = buildTrustDecision(member, signal, name);
+  const decision = buildTrustDecision(member, signal, name, profile);
   const status = cleanerStatus(member, signal, profile);
   const type = profileTypeLabel(profile);
 
@@ -4089,6 +4157,116 @@ function ReviewCarousel({
   );
 }
 
+function MutualWatchlist({
+  members,
+  onSelect,
+  profiles,
+  trustSignals,
+}: {
+  members: CircleMember[];
+  onSelect: (member: CircleMember) => void;
+  profiles: Record<string, CirclesProfile>;
+  trustSignals: Record<string, TrustSignal>;
+}) {
+  if (!members.length) return null;
+
+  const visibleMembers = members.slice(0, 6);
+
+  return (
+    <section className="mt-4 rounded-lg border border-amber/20 bg-amber/5 p-3">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="text-sm font-semibold text-ink">
+              Mutual watchlist
+            </h3>
+            <Badge className="border-amber/25 bg-white/70 text-amber" variant="outline">
+              {members.length} to review
+            </Badge>
+          </div>
+          <p className="mt-1 max-w-2xl text-xs leading-relaxed text-ink/60">
+            These relations are mutual, so they are not added to the untrust
+            plan. Weak signals still make them worth checking before you forget
+            why the trust exists.
+          </p>
+        </div>
+        <Badge className="border-ink/10 bg-white/70 text-ink/55" variant="outline">
+          watch only
+        </Badge>
+      </div>
+
+      <div className="mt-3 grid gap-2 lg:grid-cols-2">
+        {visibleMembers.map((member) => {
+          const profile = profiles[member.address];
+          const signal = trustSignals[member.address];
+          const name = profile?.name?.trim() || shortenAddress(member.address);
+          const type = profileTypeLabel(profile);
+          const reasons = mutualWatchReasons(signal, profile);
+
+          return (
+            <article
+              key={circleMemberId(member)}
+              className="rounded-lg border border-ink/10 bg-white/75 p-3 shadow-sm"
+            >
+              <div className="flex min-w-0 items-start gap-3">
+                <ProfileAvatar address={member.address} profile={profile} />
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-semibold text-ink">
+                    {name}
+                  </div>
+                  <div className="truncate text-xs text-ink/55">
+                    {shortenAddress(member.address)} - {type}
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    <Badge className="border-sage/25 bg-sage/10 text-sage" variant="outline">
+                      Mutual
+                    </Badge>
+                    <Badge className="border-amber/25 bg-amber/10 text-amber" variant="outline">
+                      Watch
+                    </Badge>
+                    <Badge className="border-ink/10 bg-sand/70 text-ink/60" variant="outline">
+                      {scoreLabel(signal)}
+                    </Badge>
+                    <Badge className="border-ink/10 bg-sand/70 text-ink/60" variant="outline">
+                      Backer {backerLabel(signal)}
+                    </Badge>
+                  </div>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="shrink-0 border-ink/15 bg-white/70 hover:border-marine/30 hover:bg-white"
+                  onClick={() => onSelect(member)}
+                >
+                  <Eye className="size-3.5" />
+                  Inspect
+                </Button>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-1.5">
+                {reasons.slice(0, 4).map((reason) => (
+                  <span
+                    key={reason}
+                    className="rounded-md bg-amber/10 px-2 py-1 text-xs text-amber"
+                  >
+                    {reason}
+                  </span>
+                ))}
+              </div>
+            </article>
+          );
+        })}
+      </div>
+
+      {members.length > visibleMembers.length ? (
+        <div className="mt-2 text-xs text-ink/55">
+          +{members.length - visibleMembers.length} more in the Mutual column.
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 function TrustCircleManager({
   analysis,
   onActivity,
@@ -4183,6 +4361,29 @@ function TrustCircleManager({
         ),
     [profiles, reviewMembers, trustSignals],
   );
+  const mutualWatchMembers = useMemo(
+    () =>
+      keepMembers
+        .filter(
+          (member) =>
+            mutualWatchReasons(
+              trustSignals[member.address],
+              profiles[member.address],
+            ).length > 0,
+        )
+        .sort(
+          (left, right) =>
+            mutualWatchScore(
+              trustSignals[right.address],
+              profiles[right.address],
+            ) -
+            mutualWatchScore(
+              trustSignals[left.address],
+              profiles[left.address],
+            ),
+        ),
+    [keepMembers, profiles, trustSignals],
+  );
   const normalizedSourceAddress = sourceAddress?.toLowerCase() ?? "";
   const sourceProfileName =
     normalizedSourceAddress ? profiles[normalizedSourceAddress]?.name?.trim() : "";
@@ -4266,6 +4467,11 @@ function TrustCircleManager({
       ) as Record<string, CircleMember>,
     [allMembers],
   );
+  const hasLoadedCircle = Boolean(sourceAddress);
+  const circleLooksClean =
+    hasLoadedCircle &&
+    reviewMembers.length === 0 &&
+    mutualWatchMembers.length === 0;
 
   useEffect(() => {
     const term = circleSearchTerm.trim();
@@ -4543,13 +4749,18 @@ function TrustCircleManager({
           </div>
           <p className="mt-1 max-w-2xl text-sm text-ink/65">
             Focus first on outgoing-only trusts: these are commitments you can
-            clean without breaking a direct mutual relation.
+            clean without breaking a direct mutual relation. Mutual relations
+            with weak signals stay visible as watch-only reviews.
           </p>
         </div>
-        <div className="grid grid-cols-3 gap-2 rounded-lg border border-ink/10 bg-white/45 p-2 text-center">
+        <div className="grid grid-cols-2 gap-2 rounded-lg border border-ink/10 bg-white/45 p-2 text-center sm:grid-cols-4">
           <div className="px-2">
             <div className="text-lg font-semibold text-ink">{keepMembers.length}</div>
             <div className="text-[11px] uppercase tracking-wide text-ink/45">Mutual</div>
+          </div>
+          <div className="px-2">
+            <div className="text-lg font-semibold text-amber">{mutualWatchMembers.length}</div>
+            <div className="text-[11px] uppercase tracking-wide text-ink/45">Watch</div>
           </div>
           <div className="px-2">
             <div className="text-lg font-semibold text-citrus">{reviewMembers.length}</div>
@@ -4586,18 +4797,72 @@ function TrustCircleManager({
         trustSignals={trustSignals}
       />
 
-      <div ref={planRef} className="mt-4 scroll-mt-24">
-        <PreparedPlan
-          currentMembers={allMembers}
-          onActivity={onActivity}
-          onRefreshGraph={onRefreshGraph}
-          profiles={profiles}
-          readVersion={readVersion}
-          selectedRows={selectedRows}
-          sourceAddress={sourceAddress}
-          trustSignals={trustSignals}
-        />
-      </div>
+      <MutualWatchlist
+        members={mutualWatchMembers}
+        onSelect={onSelectMember}
+        profiles={profiles}
+        trustSignals={trustSignals}
+      />
+
+      {circleLooksClean ? (
+        <div className="mt-4 rounded-lg border border-sage/20 bg-sage/10 p-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="flex items-start gap-3">
+              <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-md bg-sage/15 text-sage">
+                <CheckCircle2 className="size-5" />
+              </span>
+              <div>
+                <h3 className="text-sm font-semibold text-ink">
+                  Circle looks clean
+                </h3>
+                <p className="mt-1 max-w-2xl text-sm leading-relaxed text-ink/65">
+                  No outgoing-only trust was found in the loaded circle. There
+                  is no profile to untrust from this priority view.
+                </p>
+              </div>
+            </div>
+            <Badge className="border-sage/25 bg-white/65 text-sage" variant="outline">
+              No action needed
+            </Badge>
+          </div>
+        </div>
+      ) : reviewMembers.length > 0 ? (
+        <div ref={planRef} className="mt-4 scroll-mt-24">
+          <PreparedPlan
+            currentMembers={allMembers}
+            onActivity={onActivity}
+            onRefreshGraph={onRefreshGraph}
+            profiles={profiles}
+            readVersion={readVersion}
+            selectedRows={selectedRows}
+            sourceAddress={sourceAddress}
+            trustSignals={trustSignals}
+          />
+        </div>
+      ) : (
+        <div className="mt-4 rounded-lg border border-amber/20 bg-amber/5 p-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="flex items-start gap-3">
+              <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-md bg-amber/15 text-amber">
+                <AlertCircle className="size-5" />
+              </span>
+              <div>
+                <h3 className="text-sm font-semibold text-ink">
+                  No untrust candidate
+                </h3>
+                <p className="mt-1 max-w-2xl text-sm leading-relaxed text-ink/65">
+                  No outgoing-only trust was found. Review the mutual watchlist
+                  above for context, but no transaction is prepared from those
+                  mutual relations.
+                </p>
+              </div>
+            </div>
+            <Badge className="border-amber/25 bg-white/65 text-amber" variant="outline">
+              Watch only
+            </Badge>
+          </div>
+        </div>
+      )}
 
       <div className="mt-4 rounded-lg border border-ink/10 bg-white/45 p-3">
         <form
@@ -4763,7 +5028,7 @@ function TrustCircleManager({
 
       <div className="mt-4 grid gap-3 md:grid-cols-3">
         <CircleColumn
-          empty="No outgoing trust without return."
+          empty="No outgoing-only trust to review."
           members={reviewMembers}
           onSelect={onSelectMember}
           onToggleCleanup={onToggleCleanup}
@@ -4797,26 +5062,27 @@ function TrustCircleManager({
         />
       </div>
 
-      <div className="mt-4 flex flex-wrap gap-2">
-        <Button
-          type="button"
-          variant="outline"
-          className="border-ink/15 bg-white/70 hover:border-marine/30 hover:bg-white"
-          disabled={reviewMembers.length === 0}
-          onClick={onSelectAll}
-        >
-          Select all outgoing-only untrusts
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          className="border-ink/15 bg-white/70 hover:border-citrus/30 hover:bg-white"
-          disabled={selectedRows.length === 0}
-          onClick={onClear}
-        >
-          Clear selection
-        </Button>
-      </div>
+      {reviewMembers.length > 0 ? (
+        <div className="mt-4 flex flex-wrap gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            className="border-ink/15 bg-white/70 hover:border-marine/30 hover:bg-white"
+            onClick={onSelectAll}
+          >
+            Select all outgoing-only untrusts
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            className="border-ink/15 bg-white/70 hover:border-citrus/30 hover:bg-white"
+            disabled={selectedRows.length === 0}
+            onClick={onClear}
+          >
+            Clear selection
+          </Button>
+        </div>
+      ) : null}
 
       <div className="mt-4">
         <CleanupBar
