@@ -6,6 +6,10 @@ import { Sdk } from "@aboutcircles/sdk";
 const ADDRESS_RE = /^0x[a-fA-F0-9]{40}$/;
 const DEFAULT_TARGET_FLOW = 10n ** 18n;
 const DEFAULT_MAX_TRANSFERS = 4;
+const MAX_TRANSFERS_LIMIT = 64;
+const CRC_DISPLAY_DECIMALS = 3;
+const TEST_PATH_MODE = "test";
+const MAX_PATH_MODE = "max";
 
 type TransferStep = {
   from: string;
@@ -21,6 +25,7 @@ function normalizeAddress(value: unknown) {
 }
 
 function parsePositiveBigInt(value: unknown, fallback: bigint) {
+  if (value === MAX_PATH_MODE) return fallback;
   if (typeof value !== "string" && typeof value !== "number") return fallback;
   try {
     const parsed = BigInt(value);
@@ -35,7 +40,10 @@ function formatAttoCrc(value: bigint) {
   const absolute = value < 0n ? -value : value;
   const whole = absolute / DEFAULT_TARGET_FLOW;
   const fraction = absolute % DEFAULT_TARGET_FLOW;
-  const fractionText = fraction.toString().padStart(18, "0").slice(0, 4);
+  const fractionText = fraction
+    .toString()
+    .padStart(18, "0")
+    .slice(0, CRC_DISPLAY_DECIMALS);
   const trimmed = fractionText.replace(/0+$/, "");
   return `${sign}${whole.toString()}${trimmed ? `.${trimmed}` : ""}`;
 }
@@ -65,37 +73,45 @@ export async function POST(req: Request) {
     const targetFlow = parsePositiveBigInt(body?.targetFlow, DEFAULT_TARGET_FLOW);
     const maxTransfers =
       typeof body?.maxTransfers === "number" && body.maxTransfers > 0
-        ? Math.min(Math.floor(body.maxTransfers), 8)
+        ? Math.min(Math.floor(body.maxTransfers), MAX_TRANSFERS_LIMIT)
         : DEFAULT_MAX_TRANSFERS;
     const useWrappedBalances = body?.useWrappedBalances !== false;
+    const pathMode = body?.pathMode === MAX_PATH_MODE ? MAX_PATH_MODE : TEST_PATH_MODE;
     const sdk = new Sdk();
 
-    const [maxFlow, path] = await Promise.all([
-      sdk.rpc.pathfinder.findMaxFlow({
+    const maxFlow = await sdk.rpc.pathfinder.findMaxFlow({
+      from: from as `0x${string}`,
+      to: to as `0x${string}`,
+      useWrappedBalances,
+      maxTransfers,
+    });
+    const pathTargetFlow = pathMode === MAX_PATH_MODE ? maxFlow : targetFlow;
+    let requestedFlow = 0n;
+    let transfers: TransferStep[] = [];
+
+    if (pathTargetFlow > 0n) {
+      const path = await sdk.rpc.pathfinder.findPath({
         from: from as `0x${string}`,
         to: to as `0x${string}`,
+        targetFlow: pathTargetFlow,
         useWrappedBalances,
         maxTransfers,
-      }),
-      sdk.rpc.pathfinder.findPath({
-        from: from as `0x${string}`,
-        to: to as `0x${string}`,
-        targetFlow,
-        useWrappedBalances,
-        maxTransfers,
-      }),
-    ]);
+      });
+      requestedFlow = path.maxFlow;
+      transfers = path.transfers;
+    }
 
     return NextResponse.json({
       from,
       to,
-      targetFlow: targetFlow.toString(),
-      targetFlowCrc: formatAttoCrc(targetFlow),
+      pathMode,
+      targetFlow: pathTargetFlow.toString(),
+      targetFlowCrc: formatAttoCrc(pathTargetFlow),
       maxFlow: maxFlow.toString(),
       maxFlowCrc: formatAttoCrc(maxFlow),
-      requestedFlow: path.maxFlow.toString(),
-      requestedFlowCrc: formatAttoCrc(path.maxFlow),
-      transfers: path.transfers.map(serializeTransfer),
+      requestedFlow: requestedFlow.toString(),
+      requestedFlowCrc: formatAttoCrc(requestedFlow),
+      transfers: transfers.map(serializeTransfer),
       useWrappedBalances,
       maxTransfers,
     });

@@ -13,11 +13,14 @@ const IPFS_GATEWAYS = [
 ];
 
 type CirclesProfile = {
+  avatarType?: string | null;
   name: string;
   imageUrl: string | null;
+  typeLabel?: string | null;
 };
 
 type AvatarInfo = {
+  avatarType?: string | null;
   cid?: string | null;
   cidV0?: string | null;
   cidV1?: string | null;
@@ -56,6 +59,16 @@ function stringField(record: Record<string, unknown> | null, keys: string[]) {
   for (const key of keys) {
     const value = record[key];
     if (typeof value === "string" && value) return value;
+  }
+  return null;
+}
+
+function profileTypeLabel(rawType: string | null | undefined) {
+  const avatarType = rawType?.toLowerCase() ?? "";
+  if (avatarType.includes("group")) return "Groupe";
+  if (avatarType.includes("org")) return "Org";
+  if (avatarType.includes("human") || avatarType.includes("person")) {
+    return "User";
   }
   return null;
 }
@@ -106,13 +119,18 @@ function profileFromServiceRecord(record: Record<string, unknown>) {
     stringField(profile, ["previewImageUrl", "imageUrl", "avatarUrl"]) ??
       stringField(record, ["previewImageUrl", "imageUrl", "avatarUrl"]),
   );
+  const avatarType =
+    stringField(profile, ["avatarType", "type", "kind"]) ??
+    stringField(record, ["avatarType", "type", "kind"]);
 
   if (!name && !imageUrl && !cid) return null;
   return {
     address: address ? normalizeAddress(address) : null,
+    avatarType,
     cid,
     name,
     imageUrl,
+    typeLabel: profileTypeLabel(avatarType),
   };
 }
 
@@ -141,7 +159,14 @@ async function getProfileFromServiceByCid(
 ): Promise<CirclesProfile | null> {
   const profiles = await fetchProfilesFromService("profiles/get", { cid });
   const profile = profiles[0];
-  return profile ? { name: profile.name, imageUrl: profile.imageUrl } : null;
+  return profile
+    ? {
+        avatarType: profile.avatarType,
+        name: profile.name,
+        imageUrl: profile.imageUrl,
+        typeLabel: profile.typeLabel,
+      }
+    : null;
 }
 
 async function getProfileFromServiceByAddress(
@@ -154,20 +179,33 @@ async function getProfileFromServiceByAddress(
   if ((!exact.name || !exact.imageUrl) && exact.cid) {
     const byCid = await getProfileFromServiceByCid(exact.cid);
     return {
+      avatarType: exact.avatarType || byCid?.avatarType || null,
       name: exact.name || byCid?.name || "",
       imageUrl: exact.imageUrl || byCid?.imageUrl || null,
+      typeLabel: profileTypeLabel(exact.avatarType) || byCid?.typeLabel || null,
     };
   }
 
-  return { name: exact.name, imageUrl: exact.imageUrl };
+  return {
+    avatarType: exact.avatarType,
+    name: exact.name,
+    imageUrl: exact.imageUrl,
+    typeLabel: exact.typeLabel,
+  };
 }
 
 function profileFromAvatarInfo(info: AvatarInfo | null): CirclesProfile | null {
   if (!info) return null;
+  const avatarType = typeof info.avatarType === "string" ? info.avatarType : null;
   const name = typeof info.name === "string" ? info.name : "";
   const imageUrl = normalizeImageUrl(info.previewImageUrl || info.imageUrl);
   if (!name && !imageUrl) return null;
-  return { name, imageUrl };
+  return {
+    avatarType,
+    name,
+    imageUrl,
+    typeLabel: profileTypeLabel(avatarType),
+  };
 }
 
 async function getAvatarInfo(address: string): Promise<AvatarInfo | null> {
@@ -237,6 +275,11 @@ async function fetchProfile(address: string): Promise<CirclesProfile> {
   const ipfsProfile = cid ? await getProfileFromIpfs(cid) : null;
 
   const result = {
+    avatarType:
+      serviceProfile?.avatarType ||
+      directProfile?.avatarType ||
+      serviceCidProfile?.avatarType ||
+      null,
     name:
       serviceProfile?.name ||
       directProfile?.name ||
@@ -248,6 +291,11 @@ async function fetchProfile(address: string): Promise<CirclesProfile> {
       directProfile?.imageUrl ||
       serviceCidProfile?.imageUrl ||
       ipfsProfile?.imageUrl ||
+      null,
+    typeLabel:
+      serviceProfile?.typeLabel ||
+      directProfile?.typeLabel ||
+      serviceCidProfile?.typeLabel ||
       null,
   };
   profileCache.set(normalized, { profile: result, timestamp: Date.now() });
@@ -265,7 +313,7 @@ export async function POST(req: Request) {
     }
 
     const limited = addresses
-      .slice(0, 50)
+      .slice(0, 100)
       .filter((address): address is string => typeof address === "string");
     const profiles: Record<string, CirclesProfile> = {};
 
