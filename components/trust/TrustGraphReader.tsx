@@ -695,6 +695,55 @@ function relationSentence(member: CircleMember, name: string) {
   return `${name} accepts your CRC; you do not take outgoing risk.`;
 }
 
+function profileReviewKind(
+  member: CircleMember,
+  signal?: TrustSignal | null,
+  profile?: CirclesProfile | null,
+) {
+  if (member.bucket === "review") {
+    return {
+      helper:
+        "You currently accept this profile's CRC, but no direct trust back was detected.",
+      label: "Untrust candidate",
+      tone: "citrus" as const,
+    };
+  }
+
+  if (member.bucket === "keep") {
+    const watchReasons = mutualWatchReasons(signal, profile);
+    if (watchReasons.length > 0) {
+      return {
+        helper:
+          "The relation is mutual, but weak signals make it worth checking before you forget why it exists.",
+        label: "Watch mutual",
+        tone: "amber" as const,
+      };
+    }
+
+    return {
+      helper:
+        "This is a direct mutual relation. Trust Cleaner does not turn it into a removal action.",
+      label: "Trusted mutual",
+      tone: "sage" as const,
+    };
+  }
+
+  return {
+    helper:
+      "This profile trusts you, but you do not accept their CRC. It does not create outgoing risk.",
+    label: "No outgoing risk",
+    tone: "marine" as const,
+  };
+}
+
+function reviewActionCopy(member: CircleMember, selectedForCleanup: boolean) {
+  if (member.bucket === "review") {
+    return selectedForCleanup ? "Remove from untrust plan" : "Add to untrust plan";
+  }
+  if (member.bucket === "keep") return "Watch only";
+  return "No action needed";
+}
+
 function hasPositiveFlow(value: string) {
   try {
     return BigInt(value) > 0n;
@@ -3029,115 +3078,167 @@ function MemberDetailPanel({
   const isReview = member.bucket === "review";
   const decision = buildTrustDecision(member, signal, name, profile);
   const status = cleanerStatus(member, signal, profile);
+  const reviewKind = profileReviewKind(member, signal, profile);
   const type = profileTypeLabel(profile);
+  const profileResult: ProfileSearchResult = {
+    address: member.address,
+    imageUrl: profile?.imageUrl ?? null,
+    name,
+  };
 
   return (
     <aside className="rounded-lg border border-ink/10 bg-white/55 p-4">
-      <div className="grid gap-4 lg:grid-cols-[minmax(220px,0.75fr)_minmax(340px,1fr)_minmax(260px,0.85fr)] lg:items-stretch">
-        <div className="flex min-w-0 flex-col gap-3">
-          <div className="flex items-start gap-3">
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div className="flex min-w-0 items-start gap-3">
             <ProfileAvatar address={member.address} profile={profile} size="md" />
-            <div className="min-w-0 flex-1">
-              <div className="truncate text-base font-semibold text-ink">
-                {name}
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className="truncate text-base font-semibold text-ink">
+                  {name}
+                </h3>
+                <Badge className={decisionToneClass(reviewKind.tone)} variant="outline">
+                  {reviewKind.label}
+                </Badge>
               </div>
-              <div className="truncate text-xs text-ink/55">
+              <div className="mt-1 truncate text-xs text-ink/55">
                 {shortenAddress(member.address)} - {type}
               </div>
             </div>
-            <div className="flex shrink-0 flex-col items-end gap-1.5">
+          </div>
+          <div className="flex shrink-0 flex-wrap gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              className="border-ink/15 bg-white/70 hover:border-marine/30 hover:bg-white"
+              onClick={() => onLoadProfile(profileResult)}
+            >
+              <Eye className="size-4" />
+              View their circle
+            </Button>
+            {isReview ? (
+              <Button
+                type="button"
+                variant={selectedForCleanup ? "secondary" : "default"}
+                onClick={() => onToggleCleanup(cleanupRowId(member))}
+              >
+                <ClipboardCheck className="size-4" />
+                {reviewActionCopy(member, selectedForCleanup)}
+              </Button>
+            ) : null}
+          </div>
+        </div>
+
+        <div className="grid gap-3 lg:grid-cols-2">
+          <section className="rounded-lg border border-ink/10 bg-sand/45 p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h4 className="text-sm font-semibold text-ink">Profile review</h4>
+              <Badge className={decisionToneClass(decision.tone)} variant="outline">
+                {decision.label}
+              </Badge>
+            </div>
+            <p className="mt-2 text-sm leading-relaxed text-ink/68">
+              {decision.summary}
+            </p>
+            <div className="mt-3 rounded-md bg-white/55 px-2.5 py-2 text-xs font-medium leading-relaxed text-ink/70">
+              {decision.action}
+            </div>
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              <Badge className={circleBucketTone(member.bucket)} variant="outline">
+                {circleBucketLabel(member.bucket)}
+              </Badge>
+              <Badge className="border-ink/10 bg-white/60 text-ink/60" variant="outline">
+                {isReview ? "Can enter untrust plan" : "No transaction prepared"}
+              </Badge>
+            </div>
+          </section>
+
+          <section className="rounded-lg border border-ink/10 bg-white/50 p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h4 className="text-sm font-semibold text-ink">
+                Why this profile is shown
+              </h4>
               <Badge className={decisionToneClass(status.tone)} variant="outline">
                 {status.label}
               </Badge>
-              <Badge className="border-ink/10 bg-sand/70 text-ink/60" variant="outline">
-                {type}
-              </Badge>
             </div>
-          </div>
-
-          <p className="rounded-lg border border-ink/10 bg-sand/60 p-3 text-sm leading-relaxed text-ink/70">
-            {relationSentence(member, name)}
-          </p>
-        </div>
-
-        <div className="grid grid-cols-2 gap-2">
-          <div className="rounded-lg border border-ink/10 bg-white/55 p-3">
-            <div className="text-xs font-semibold uppercase tracking-wide text-ink/45">
-              Account type
-            </div>
-            <div className="mt-1 text-sm font-semibold text-ink">
-              {type}
-            </div>
-          </div>
-          <div className="rounded-lg border border-ink/10 bg-white/55 p-3">
-            <div className="text-xs font-semibold uppercase tracking-wide text-ink/45">
-              Trust score
-            </div>
-            <div className="mt-1 text-sm font-semibold text-ink">
-              {scoreLabel(signal)}
-            </div>
-          </div>
-          <div className="rounded-lg border border-ink/10 bg-white/55 p-3">
-            <div className="text-xs font-semibold uppercase tracking-wide text-ink/45">
-              Backer
-            </div>
-            <div className="mt-1 text-sm font-semibold text-ink">
-              {backerLabel(signal)}
-            </div>
-          </div>
-          <div className="rounded-lg border border-ink/10 bg-white/55 p-3">
-            <div className="text-xs font-semibold uppercase tracking-wide text-ink/45">
-              Account age
-            </div>
-            <div className="mt-1 text-sm font-semibold text-ink">
-              {accountAgeLabel(signal)}
-            </div>
-          </div>
-          <div className="rounded-lg border border-ink/10 bg-white/55 p-3">
-            <div className="text-xs font-semibold uppercase tracking-wide text-ink/45">
-              Network
-            </div>
-            <div className="mt-1 text-sm font-semibold text-ink">
-              {networkLabel(signal)}
-            </div>
-          </div>
-        </div>
-
-        <div className="flex min-w-0 flex-col gap-2">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="text-xs font-semibold uppercase tracking-wide text-ink/45">
-              Cleaner status
-            </div>
-            <Badge className={decisionToneClass(status.tone)} variant="outline">
-              {status.label}
-            </Badge>
-          </div>
-          <div className="rounded-lg border border-ink/10 bg-white/55 p-3 text-sm leading-relaxed text-ink/65">
-            <p>{status.summary}</p>
-            <div className="mt-3 grid gap-1.5 text-xs text-ink/55">
-              {status.reasons.map((reason) => (
-                <div key={reason} className="flex items-start gap-2">
+            <p className="mt-2 text-sm leading-relaxed text-ink/68">
+              {status.summary}
+            </p>
+            <div className="mt-3 grid gap-1.5 text-xs text-ink/58">
+              {status.reasons.map((reason, index) => (
+                <div key={`${reason}-${index}`} className="flex items-start gap-2">
                   <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-marine/45" />
                   <span>{reason}</span>
                 </div>
               ))}
             </div>
-            <div className="mt-3 rounded-md bg-sand/70 px-2.5 py-2 text-xs font-medium text-ink/70">
-              {decision.action}
-            </div>
-          </div>
+          </section>
+        </div>
 
-              {isReview ? (
-                <Button
-                  type="button"
-                  className="mt-auto w-full"
-                  variant={selectedForCleanup ? "secondary" : "default"}
-                  onClick={() => onToggleCleanup(cleanupRowId(member))}
-                >
-                  <ClipboardCheck className="size-4" />
-                  {selectedForCleanup ? "Remove from plan" : "Untrust"}
-                </Button>
-              ) : null}
+        <dl className="grid grid-cols-2 gap-2 lg:grid-cols-5">
+          <div className="rounded-lg border border-ink/10 bg-white/45 p-3">
+            <dt className="text-xs font-semibold uppercase text-ink/45">
+              Account type
+            </dt>
+            <dd className="mt-1 text-sm font-semibold text-ink">{type}</dd>
+          </div>
+          <div className="rounded-lg border border-ink/10 bg-white/45 p-3">
+            <dt className="text-xs font-semibold uppercase text-ink/45">
+              Trust score
+            </dt>
+            <dd className="mt-1 text-sm font-semibold text-ink">
+              {scoreLabel(signal)}
+            </dd>
+          </div>
+          <div className="rounded-lg border border-ink/10 bg-white/45 p-3">
+            <dt className="text-xs font-semibold uppercase text-ink/45">
+              Backer
+            </dt>
+            <dd className="mt-1 text-sm font-semibold text-ink">
+              {backerLabel(signal)}
+            </dd>
+          </div>
+          <div className="rounded-lg border border-ink/10 bg-white/45 p-3">
+            <dt className="text-xs font-semibold uppercase text-ink/45">
+              Account age
+            </dt>
+            <dd className="mt-1 text-sm font-semibold text-ink">
+              {accountAgeLabel(signal)}
+            </dd>
+          </div>
+          <div className="rounded-lg border border-ink/10 bg-white/45 p-3">
+            <dt className="text-xs font-semibold uppercase text-ink/45">
+              Network
+            </dt>
+            <dd className="mt-1 text-sm font-semibold text-ink">
+              {networkLabel(signal)}
+            </dd>
+          </div>
+        </dl>
+
+        <div className="grid gap-3 lg:grid-cols-2">
+          <section className="rounded-lg border border-ink/10 bg-white/45 p-3">
+            <h4 className="text-sm font-semibold text-ink">What this means</h4>
+            <p className="mt-2 text-sm leading-relaxed text-ink/68">
+              {relationSentence(member, name)}
+            </p>
+            <p className="mt-2 text-sm leading-relaxed text-ink/60">
+              {reviewKind.helper}
+            </p>
+          </section>
+
+          <section className="rounded-lg border border-ink/10 bg-white/45 p-3">
+            <h4 className="text-sm font-semibold text-ink">Decision factors</h4>
+            <div className="mt-2 grid gap-1.5 text-sm text-ink/64">
+              {decision.factors.map((factor, index) => (
+                <div key={`${factor}-${index}`} className="flex items-start gap-2">
+                  <span className="mt-2 size-1.5 shrink-0 rounded-full bg-citrus/45" />
+                  <span>{factor}</span>
+                </div>
+              ))}
+            </div>
+          </section>
         </div>
       </div>
       <div className="mt-3">
