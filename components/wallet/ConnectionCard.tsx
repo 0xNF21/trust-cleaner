@@ -36,7 +36,7 @@ export function ConnectionCard() {
           </span>
 
           <span className="text-muted-foreground">Environment</span>
-          <span>{isMiniappHost ? 'inside Circles host' : 'standalone (dev)'}</span>
+          <span>{isMiniappHost ? 'inside Circles app' : 'web app'}</span>
         </div>
 
         {!isConnected && (

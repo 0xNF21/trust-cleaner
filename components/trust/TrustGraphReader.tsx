@@ -192,6 +192,8 @@ type ActivityDraft = Omit<ActivityEvent, "id" | "timestamp"> & {
   timestamp?: string;
 };
 
+type TrustCleanerView = "cleaner" | "history";
+
 type CircleBucket = "keep" | "review" | "incoming";
 
 type CircleMember = RelationRow & {
@@ -827,12 +829,9 @@ function ActivityHistoryPanel({
             <h2 className="text-lg font-semibold tracking-tight text-ink">
               Signed action history
             </h2>
-            <Badge className="border-marine/20 bg-marine/10 text-marine" variant="outline">
-              Local only
-            </Badge>
           </div>
           <p className="mt-1 max-w-2xl text-sm text-ink/65">
-            Only successful wallet signatures are stored here, with targets and
+            Successful untrust signatures appear here with target profiles and
             transaction hashes.
           </p>
         </div>
@@ -893,7 +892,7 @@ function ActivityHistoryPanel({
             {events.length > visibleEvents.length ? (
               <div className="rounded-lg border border-dashed border-ink/15 bg-white/35 p-3 text-xs font-medium text-ink/50">
                 {events.length - visibleEvents.length} older signed action
-                {events.length - visibleEvents.length > 1 ? "s" : ""} kept locally.
+                {events.length - visibleEvents.length > 1 ? "s" : ""} saved.
               </div>
             ) : null}
           </div>
@@ -1055,7 +1054,7 @@ function RelationList({
           <div className="flex shrink-0 flex-wrap justify-end gap-1.5">
             <TrustSignalBadge signal={trustSignals[row.address]} compact />
             <Badge className={toneClasses} variant="outline">
-              dry-run
+              sample
             </Badge>
           </div>
         </div>
@@ -3151,9 +3150,9 @@ function PreparedPlan({
       : signatureState.status === "success"
         ? "Signature sent"
       : !wallet.isMiniappHost || !wallet.address
-      ? "Open in Circles host"
+      ? "Open in Circles app"
       : dryRun.status !== "ready" || !dryRunMatchesPlan
-        ? "Dry-run required before signature"
+        ? "Prepare transaction first"
           : `Review ${dryRun.transactions.length} untrust`;
   const currentMembersByAddress = useMemo(
     () =>
@@ -3239,7 +3238,7 @@ function PreparedPlan({
 
     if (dryRun.status !== "ready" || !dryRunMatchesPlan) {
       setSignatureState({
-        error: "Run an up-to-date dry-run before signing.",
+        error: "Prepare an up-to-date transaction before signing.",
         hashes: [],
         status: "error",
       });
@@ -3261,7 +3260,7 @@ function PreparedPlan({
 
     if (dryRun.status !== "ready" || !dryRunMatchesPlan) {
       setSignatureState({
-        error: "Run an up-to-date dry-run before signing.",
+        error: "Prepare an up-to-date transaction before signing.",
         hashes: [],
         status: "error",
       });
@@ -3286,7 +3285,7 @@ function PreparedPlan({
           dryRun.transactions.length > 1 ? "s" : ""
         } signed. ${hashes.length} transaction hash${
           hashes.length > 1 ? "es" : ""
-        } returned by the Circles host.`,
+        } returned after signature.`,
         metadata: [
           ...dryRun.transactions
             .slice(0, 3)
@@ -3314,7 +3313,7 @@ function PreparedPlan({
       (!dryRunMatchesPlan && signatureState.status !== "success")
     ) {
       setVerificationState({
-        error: "Up-to-date dry-run required before rechecking.",
+        error: "Prepared transaction required before rechecking.",
         status: "error",
         targets: [],
       });
@@ -3350,7 +3349,7 @@ function PreparedPlan({
               {signatureState.status === "success"
                 ? "Signature sent. The verification below confirms the on-chain result after rereading."
                 : selectedRows.length > 0
-                ? "No signature has been sent. The plan only organizes selected profiles before manual validation."
+                ? "Selected profiles stay in review until you approve the wallet signature."
                 : "Select an Untrust profile in the carousel: it will appear here before any signature."}
             </p>
           </div>
@@ -3365,8 +3364,8 @@ function PreparedPlan({
           {signatureState.status === "success"
             ? "Signed action"
             : planSummary.confirm > 0
-            ? `Dry-run ${planSummary.confirm} untrust`
-            : "Dry-run unavailable"}
+            ? `Prepare ${planSummary.confirm} untrust`
+            : "Nothing to prepare"}
         </Button>
       </div>
 
@@ -3525,14 +3524,14 @@ function PreparedPlan({
               Transaction draft
             </h4>
             <p className="text-xs leading-relaxed text-ink/60">
-              The dry-run encodes what would be sent to the wallet. It signs
-              nothing and sends nothing to the host.
+              This draft shows exactly what the wallet will receive before you
+              approve the untrust signature.
             </p>
           </div>
           <Badge className="border-marine/20 bg-marine/10 text-marine" variant="outline">
             {dryRun.status === "ready"
               ? `${dryRun.transactions.length} call${dryRun.transactions.length > 1 ? "s" : ""}`
-              : "No send"}
+              : "Not prepared"}
           </Badge>
         </div>
 
@@ -3546,8 +3545,8 @@ function PreparedPlan({
         !dryRunMatchesPlan &&
         signatureState.status !== "success" ? (
           <div className="mt-3 rounded-md border border-amber/20 bg-amber/10 px-3 py-2 text-xs font-medium text-amber">
-            The plan changed since the last dry-run. Regenerate the draft
-            before signing.
+            The plan changed since the last preparation. Prepare the transaction
+            again before signing.
           </div>
         ) : null}
 
@@ -3596,17 +3595,17 @@ function PreparedPlan({
           </div>
         ) : (
           <div className="mt-3 rounded-lg border border-dashed border-ink/15 bg-sand/45 p-3 text-xs text-ink/55">
-            Click Dry-run once the profiles to untrust are confirmed.
+            Prepare the transaction once the profiles to untrust are confirmed.
           </div>
         )}
 
         <div className="mt-3 rounded-lg border border-ink/10 bg-sand/45 p-3">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
-              <h4 className="text-sm font-semibold text-ink">Signature wallet</h4>
+              <h4 className="text-sm font-semibold text-ink">Wallet signature</h4>
               <p className="max-w-2xl text-xs leading-relaxed text-ink/60">
-                Active only inside the connected Circles app. A review screen
-                lists the profiles right before sending to the host.
+                Available inside the connected Circles app. A review screen
+                lists the profiles right before sending the transaction.
               </p>
             </div>
             <Button
@@ -4881,6 +4880,7 @@ export function TrustGraphReader() {
   const [cleanupPreviewOpen, setCleanupPreviewOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [activeView, setActiveView] = useState<TrustCleanerView>("cleaner");
   const [activityEvents, setActivityEvents] = useState<ActivityEvent[]>([]);
   const activityHistoryLoadedRef = useRef(false);
 
@@ -5283,7 +5283,7 @@ export function TrustGraphReader() {
                 }
                 variant={isMiniappHost ? "default" : "outline"}
               >
-                {isMiniappHost ? "Circles host" : "Standalone"}
+                {isMiniappHost ? "Circles app" : "Web app"}
               </Badge>
               <Badge
                 className={
@@ -5462,6 +5462,58 @@ export function TrustGraphReader() {
         ) : null}
       </section>
 
+      <section className="trust-panel-soft rounded-lg p-2">
+        <div className="grid gap-2 sm:grid-cols-2">
+          {[
+            {
+              id: "cleaner" as const,
+              icon: <ShieldAlert className="size-4" />,
+              label: "Cleaner",
+              summary: "Review and prepare untrust actions",
+            },
+            {
+              id: "history" as const,
+              icon: <ListChecks className="size-4" />,
+              label: "History",
+              summary: `${activityEvents.length} signed action${activityEvents.length > 1 ? "s" : ""}`,
+            },
+          ].map((view) => {
+            const active = activeView === view.id;
+            return (
+              <button
+                key={view.id}
+                type="button"
+                aria-pressed={active}
+                onClick={() => setActiveView(view.id)}
+                className={
+                  "flex items-center gap-3 rounded-md border px-3 py-2 text-left transition " +
+                  (active
+                    ? "border-marine/30 bg-white text-ink shadow-sm"
+                    : "border-transparent bg-transparent text-ink/55 hover:bg-white/55 hover:text-ink")
+                }
+              >
+                <span
+                  className={
+                    "inline-flex size-8 shrink-0 items-center justify-center rounded-md " +
+                    (active ? "bg-marine/10 text-marine" : "bg-white/55 text-ink/45")
+                  }
+                >
+                  {view.icon}
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-sm font-semibold">{view.label}</span>
+                  <span className="block truncate text-xs text-ink/50">
+                    {view.summary}
+                  </span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </section>
+
+      {activeView === "cleaner" ? (
+        <>
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <CountTile
           icon={<ArrowUpRight className="size-4" />}
@@ -5496,11 +5548,6 @@ export function TrustGraphReader() {
           value={lastFetch}
         />
       </section>
-
-      <ActivityHistoryPanel
-        events={activityEvents}
-        onClear={clearActivityHistory}
-      />
 
       <TrustCircleManager
         analysis={cleanerAnalysis}
@@ -5580,6 +5627,13 @@ export function TrustGraphReader() {
           />
         </div>
       </details>
+        </>
+      ) : (
+        <ActivityHistoryPanel
+          events={activityEvents}
+          onClear={clearActivityHistory}
+        />
+      )}
     </div>
   );
 }
